@@ -52,7 +52,7 @@
 | tag | 含义 | 状态 |
 |---|---|---|
 | `upstream-phone.8` | fork 起点：上游 phone.8 源码快照，指向 `e122516` | 已建，已推送 |
-| `fw-v1.0.0` | 固件发布版，版本号抄 `FW_VERSION`，指向 `7016de1` | 已建，已推送 |
+| `fw-v1.0.0` | 固件发布版，版本号抄 `FW_VERSION`，指向 `b1fdef9` | 已建，已推送 |
 | `ios-1.0.0` | iOS App 发布版，版本号抄 `CFBundleShortVersionString` | 尚未有 |
 
 规则：
@@ -361,9 +361,9 @@ Windows 编不了 iOS，走 GitHub Actions：fork 上先启用 Actions（fork �
 - 固件工具链**已装好**：Arduino CLI 1.5.1 + ESP32 Core 3.3.10，`firmware/build.py` 编译通过（app 1264KB / 41%，RAM 28%，0 warning）
 - iOS CI 工作流已入库（`.github/workflows/ios-quick.yml`），**Actions 尚未在 GitHub 上启用**
 - 代码工作副本：`C:\Users\codem\Documents\MyFile\moto\MotoNav`（git，origin 走 SSH）
-- `main` 是自己的开发主线（不再是上游镜像），HEAD `dd783f0`
-- `main` 与 `origin/main` 有 1 个提交未推（`dd783f0` 打包版本同步），`fw-side-buttons` 分支在远端
-- tag `upstream-phone.8`（→ `e122516`）和 `fw-v1.0.0`（→ `7016de1`）均已建、已推送
+- `main` 是自己的开发主线（不再是上游镜像），HEAD `b1fdef9`
+- `main` 与 `origin/main` 同步，`fw-side-buttons` 分支保留在远端（内容已并入 main，暂不删）
+- tag `upstream-phone.8`（→ `e122516`）和 `fw-v1.0.0`（→ `b1fdef9`）均已建、已推送。`fw-v1.0.0` 曾指向 `7016de1`，为了让 tag 覆盖一次完整的发布流程（含打包版本同步与文档入库）已重置到 HEAD，属强制改写
 - 固件版本 `v1.0.0-sidebtn`，已烧录到设备并校验通过
 - 侧键功能已在真机验证：BOOT/PWR 翻页、长按带动画回首页均正常
 
