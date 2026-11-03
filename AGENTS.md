@@ -316,6 +316,32 @@ bash build-ios.sh    # Xcode + CocoaPods 1.16.2
 
 Windows 编不了 iOS，走 GitHub Actions：fork 上先启用 Actions（fork 默认关闭），工作流已在 `.github/workflows/ios-quick.yml`，手动触发，下载 artifact，用 iLoader / SideStore 自签。详细步骤见 `docs/IOS-CI-GUIDE.md`。
 
+### 打包时机：全手动
+
+开发一批内容、自己确认没问题了，再主动出包装机测试。**任何 push 都不应该自动触发构建。**
+
+仓库里有 4 个工作流，现状必须是「1 个启用 + 3 个禁用」：
+
+| 工作流 | 触发 | 要求的状态 |
+|---|---|---|
+| `ios-quick.yml` | 只有 `workflow_dispatch` | **启用**，手动点 |
+| `release-ios.yml` | push main 且改 `ios/**` 或 `firmware/boards/175/MotoNav/**` | **网页上禁用** |
+| `release-firmware.yml` | push main 且改 `firmware/**` | **网页上禁用** |
+| `android-verify.yml` | push main 且改 `android/**` | **网页上禁用** |
+
+`firmware/**` 这个匹配很宽，改一行固件就会命中；不禁用的话每推一次固件都要跑一轮 40 分钟的 iOS 构建加一轮打包。
+
+那三个是上游的文件，**不要改它们的 yml**（会和上游同步冲突），直接在网页上禁用：
+`Actions` 页面 → 左侧点进该工作流 → 右上角 `...` → `Disable workflow`。
+
+禁用状态记在 GitHub 上，不在代码里，所以：
+
+- 想临时跑一次官方 iOS 流程：先 `Enable workflow`，跑完记得再禁用
+- **每次同步上游之后检查一遍 Actions 左侧列表**，上游新增的 workflow 进来后默认是启用的，会破坏"全手动"
+
+iOS 出包：`Run workflow` → 选分支 → note 填本次改了什么 → 跑完在 run 页面下载 artifact。
+固件出包：本地 `python firmware/package_flasher.py --tools-dir <含 esptool.exe 的目录>`，产物在 `output/firmware/<版本>/`。只给自己装机的话直接用 esptool 烧 app 分区即可，不必打包。
+
 ---
 
 ## 8. 硬约束（改代码前逐条过）

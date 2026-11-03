@@ -3,7 +3,8 @@ name: iOS Quick Build (unsigned IPA)
 # 只做三件事：装 CocoaPods 依赖 -> xcodebuild 编译 -> 上传 unsigned IPA
 # 不跑仓库里的单元/一致性测试。改协议层时请改用官方 release-ios.yml。
 #
-# 放置位置：仓库根目录 .github/workflows/ios-quick.yml
+# 纯手动：没有任何 push / PR 触发，只在 Actions 页面点 Run workflow 才跑。
+# 这样推代码不会自动占用构建时间，要出包装机时再手动点。
 
 on:
   workflow_dispatch:
@@ -16,13 +17,6 @@ on:
         description: '本次改动备注（会写进 artifact 文件名）'
         required: false
         default: 'ui'
-  push:
-    branches:
-      - 'ui-**'        # 推 ui- 开头的分支自动触发
-    paths:
-      - 'ios/**'
-      - 'scripts/build-ios-ipa.sh'
-      - '.github/workflows/ios-quick.yml'
 
 permissions:
   contents: read

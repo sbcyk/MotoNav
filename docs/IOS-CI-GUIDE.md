@@ -42,22 +42,21 @@ git clone git@github.com:sbcyk/MotoNav.git
 cd MotoNav
 ```
 
-要改构建行为（超时、缓存策略、产物命名）直接改这个文件。想自动触发就在 `ui-` 开头的分支上推 `ios/**` 的改动，否则手动 dispatch 即可。
+要改构建行为（超时、缓存策略、产物命名）直接改这个文件。
 
-> 触发器只认 `ui-**` 分支的 push 和手动 dispatch。`main` 上推东西不会触发这个精简工作流。
+> 这个工作流**只有手动触发**，没有 push / PR 触发器：推代码不会自动出包，要装机时到 Actions 页面点 `Run workflow`。
 
 ---
 
 ## 3. 触发构建
 
-**方式 A（推荐，迭代时用）**
-Actions → 左侧 `iOS Quick Build (unsigned IPA)` → 右侧 `Run workflow` → 选分支 `ui-custom`，`note` 填本次改了什么（如 `boot-theme`）→ Run。
+只有一种方式：手动。
 
-**方式 B（自动）**
-分支名以 `ui-` 开头，且改动了 `ios/**`，push 即触发。
+Actions → 左侧 `iOS Quick Build (unsigned IPA)` → 右侧 `Run workflow` → 选分支（`main` 或你指定的分支），`note` 填本次改了什么（如 `boot-theme`，会进 artifact 文件名）→ Run。
 
-**方式 C（正式出包）**
-用官方 `release-ios.yml`：push 到 `main` 或手动 dispatch。它会跑完全部 Swift/C++ 一致性测试再出包，改到协议层时必须用它。
+**没有任何自动触发。** 这是刻意的：开发一批内容、自己确认没问题了，再出包装机。推代码不会占用构建时间。
+
+`release-ios.yml`（官方那套，跑全套一致性测试）默认在网页上被禁用。改到协议层、需要完整回归时才临时 `Enable workflow` 手动跑一次，跑完再禁用。
 
 ---
 
