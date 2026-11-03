@@ -5,7 +5,7 @@ task_root="${0:A:h}"
 task_check=0
 task_full=0
 task_port=""
-task_version="1.1.1"
+task_version="2.0.0"
 finish() {
   local task_code="$1"
   if [[ -t 0 && "$task_check" == 0 ]]; then
@@ -92,11 +92,11 @@ if (( task_full )); then
   task_offset=0x0
   task_erase=(--erase-all)
 else
-  print -- "普通升级写入 0x10000。要求设备已有 MotoNav 的 16MB 分区布局。"
+  print -- "普通升级写入 0x10000。要求设备已有 MotoNav 的 32MB 分区布局。"
 fi
 print -- "串口：$task_port"
 print -- "开始烧录，请保持 USB 连接…"
-if "$task_tool" --chip esp32s3 --port "$task_port" --baud 460800 --before default-reset --after hard-reset write-flash --flash-size 16MB "${task_erase[@]}" "$task_offset" "$task_image"; then
+if "$task_tool" --chip esp32s3 --port "$task_port" --baud 460800 --before default-reset --after hard-reset write-flash --flash-size 32MB "${task_erase[@]}" "$task_offset" "$task_image"; then
   print -- "烧录成功，圆屏将重启。请核对屏幕版本 ${task_version}。"
   finish 0
 else

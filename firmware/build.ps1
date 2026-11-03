@@ -28,7 +28,7 @@ $taskHomePrefix=[Environment]::GetFolderPath('UserProfile').Replace('\','/')
 $taskPrefixMap="-ffile-prefix-map=$taskHomePrefix=/builder"
 $taskArgs+=@('compile','--jobs',"$Jobs",'--libraries',(Join-Path $taskRoot 'libraries'),
     '--build-path',(Join-Path $taskBuild 'build'),
-    '--fqbn','esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi,CDCOnBoot=cdc',
+    '--fqbn','esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRAM=opi,CDCOnBoot=cdc',
     '--build-property',"compiler.c.extra_flags=$taskPrefixMap",
     '--build-property',"compiler.cpp.extra_flags=$taskPrefixMap",
     '--output-dir',$taskOutput,$taskSketch)
@@ -67,7 +67,7 @@ if($Board -eq '175') {
         $taskFilePath=Join-Path $taskDest $taskFileName
         $taskManifestFiles+=@{file=$taskFileName;bytes=(Get-Item -LiteralPath $taskFilePath).Length;sha256=(Get-FileHash -LiteralPath $taskFilePath -Algorithm SHA256).Hash.ToLowerInvariant()}
     }
-    $taskManifest=@{firmware=$taskVersion;platform='universal';board='Waveshare ESP32-S3-Touch-AMOLED-1.75';esp32Core='3.3.10';flashSize='16MB';partition='app3M_fat9M_16MB';verifiedApplicationOffset='0x10000';deviceTested=$false;files=$taskManifestFiles}
+    $taskManifest=@{firmware=$taskVersion;platform='universal';board='Waveshare ESP32-S3-Touch-AMOLED-1.75';esp32Core='3.3.10';flashSize='32MB';partition='app5M_fat24M_32MB';verifiedApplicationOffset='0x10000';deviceTested=$false;files=$taskManifestFiles}
     [IO.File]::WriteAllText((Join-Path $taskDest "${taskName}_manifest.json"),($taskManifest | ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
 }
 Get-ChildItem -LiteralPath $taskDest -File | Get-FileHash -Algorithm SHA256 | Format-Table -AutoSize

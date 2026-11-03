@@ -33,7 +33,7 @@ HID over GATT 的设备模型见 [Bluetooth SIG 规范](https://www.bluetooth.co
 
 ## 构建和验证
 
-ESP32 Core 3.3.10，FQBN `esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi,CDCOnBoot=cdc`。Windows 可使用原 `firmware/build.ps1 -Board 175`；Mac 已有 Arduino CLI/Core 时可在根目录执行：
+ESP32 Core 3.3.10，FQBN `esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRAM=opi,CDCOnBoot=cdc`。Windows 可使用原 `firmware/build.ps1 -Board 175`；Mac 已有 Arduino CLI/Core 时可在根目录执行：
 
 ```sh
 python3 firmware/build.py

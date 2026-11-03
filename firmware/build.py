@@ -8,7 +8,7 @@ import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parent
-FQBN = 'esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi,CDCOnBoot=cdc'
+FQBN = 'esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRAM=opi,CDCOnBoot=cdc'
 
 
 def package(output, dest, version):
@@ -24,7 +24,7 @@ def package(output, dest, version):
         (dest / name).write_bytes(data)
         entries.append(dict(file=name, bytes=len(data), sha256=hashlib.sha256(data).hexdigest()))
     manifest = dict(firmware=version, platform="universal", board='Waveshare ESP32-S3-Touch-AMOLED-1.75',
-                    esp32Core='3.3.10', flashSize='16MB', partition='app3M_fat9M_16MB',
+                    esp32Core='3.3.10', flashSize='32MB', partition='app5M_fat24M_32MB',
                     verifiedApplicationOffset='0x10000', deviceTested=False, files=entries)
     (dest / f'{label}_manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     return dest
