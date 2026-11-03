@@ -206,7 +206,7 @@ void slideCommit() {
     if (!wxHave || millis() - wxAt > 15UL * 60 * 1000) { pendingEvt = "T,W"; wxAskAt = millis(); }
   } else {
     if (inNav) navDirty = true;
-    else { riderPrevF = -1; riderPrevZ = -2; catForce = true; }
+    else drawWaiting(waitSt);                 // 回到首页要结束召唤过渡，不能停在半空中
   }
 }
 

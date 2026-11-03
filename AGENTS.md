@@ -27,7 +27,7 @@
 
 ### 版本号：不跟上游走
 
-上游编号是 `7.12.10-phone.8` 这类，那是上游的第几版。本仓库从 `v1.0.0-sidebtn` 起另起一套，递增规则是自己改了多少。
+上游编号是 `7.12.10-phone.8` 这类，那是上游的第几版。本仓库从 `v1.0.0` 起另起一套，递增规则是自己改了多少。
 
 理由：功能已和上游分叉（侧键是上游没有的），继续跟号会和上游未来的 `7.13.0` 撞号，而且 `7.13.0` 读起来像"上游 7.13.0 + 补丁"，不成立。
 
@@ -49,11 +49,11 @@
 
 ### tag 规范
 
-| tag | 含义 | 状态 |
-|---|---|---|
-| `upstream-phone.8` | fork 起点：上游 phone.8 源码快照，指向 `e122516` | 已建，已推送 |
-| `fw-v1.0.0` | 固件发布版，版本号抄 `FW_VERSION` | 已建，已推送，指向一次构建与打包都能跑通的状态 |
-| `ios-1.0.0` | iOS App 发布版，版本号抄 `CFBundleShortVersionString` | 尚未有 |
+| tag | 含义 |
+|---|---|
+| `upstream-phone.8` | fork 起点：上游 phone.8 源码快照，指向 `e122516` |
+| `fw-v1.0.0` | 固件发布版，版本号抄 `FW_VERSION` |
+| `ios-1.0.0` | iOS App 发布版，版本号抄 `CFBundleShortVersionString` |
 
 规则：
 
@@ -61,6 +61,7 @@
 - `upstream-phone.8` 这个 tag 不带模块前缀是对的：它标的就是上游的代码，是历史事实
 - 必须用 `-a` 打附注 tag，轻量 tag 不记录打标人、时间和说明
 - `git push` 不会自动带 tag，要单独 `git push origin <tag>`
+- tag 是否已推、指向哪个提交，用 `git tag -l` / `git describe --tags` 现查，不写进文档
 
 ---
 
@@ -123,14 +124,14 @@ firmware/
     ├── src/power/              电量、关机
     ├── src/input/              Buttons.h：BOOT + PWR 两个侧键
     ├── src/diagnostics/
-    └── resources/              BrandLogos.h(658KB) · CameraIconPixels.h(253KB) · RiderSprites.h
+    └── resources/              BrandLogos.h(658KB) · CameraIconPixels.h(253KB) · HomeSprites.h · RiderSprites.h（旧像素骑手，已不引用）
 ```
 
 ### 页面清单
 
 | 文件 | 内容 |
 |---|---|
-| `src/pages/HomePage.h` | 骑行前默认界面。像素女骑手 40×26 精灵（`RIDER_S=5` 放大），连上时围巾飘、偶尔挥手，未连时车灯灭、闭眼打瞌睡。三态 `WAIT_READY / WAIT_NOLINK / WAIT_LOST` |
+| `src/pages/HomePage.h` | 骑行前默认界面：赐福（金色光丝 + 地面法阵 + 上升光尘，纯代码绘制，无素材）。不画人，画面即褪色者视角；连上后光丝骤亮、灵马从光里凝聚，断连散去。整帧重画 + 异步推屏，`HOME_FRAME_MS` 控制到 25fps。点屏幕开信息浮层，6 秒自动收起。三态 `WAIT_READY / WAIT_NOLINK / WAIT_LOST` |
 | `src/pages/NavigationPage.h` | 导航主界面 |
 | `src/pages/WeatherPage.h` | 天气页（第 2 页） |
 | `src/pages/IncomingCall.h` | 来电界面 + **`touchPoll()` 全部触摸逻辑** |
@@ -200,8 +201,10 @@ UI 是脏标记 + 按需重绘，不是固定帧率。项目里说的"帧率"指
 - 新功能放 `src/<模块>/Xxx.h`。现有模块：`pages/` `graphics/` `power/` `protocol/` `map/` `display/` `connectivity/` `input/`。不要往 `MotoNav.ino` 里堆实现，它只负责 include 和调度
 - 时间比较一律写成 `now - last >= 间隔`（无符号相减），不要存绝对时间点再相减，`millis()` 回绕时会算出负数
 - 片选/引脚一律进 `pin_config.h`，不要写在功能头文件里
-- 提交信息用英文：标题一句话说做了什么，正文说为什么。不用 `fix` / `update` / `change` 这种没信息量的词
-- 改完代码同步更新本文档第 10 节「当前状态」
+- 提交信息用中文：标题一句话说做了什么，正文说为什么。不用 `fix` / `update` / `change` 这种没信息量的词
+- 改完代码更新 `docs/需求清单.md` 对应条目；需求、进度、阻塞项只在那里记，不写进本文档
+- 文档归属固定三处，不要再开新类型：**规范与架构 → 本文档**；**需求与进度 → `docs/需求清单.md`**；**某次版本改了什么、当时怎么验证 → `docs/archive/RELEASE-FIRMWARE-<版本>.md`**。一处事实只写在一处，别处用链接指过去
+- 过程草稿、方案对比、预览图不进仓库；`scripts/preview/` 已在 `.gitignore`
 
 ---
 
@@ -250,7 +253,7 @@ UI 是脏标记 + 按需重绘，不是固定帧率。项目里说的"帧率"指
 "C:/Users/codem/AppData/Local/Programs/Python/Python313/python.exe" firmware/build.py \
   --cli "C:/Program Files/Arduino CLI/arduino-cli.exe" --jobs 4
 
-# 产物 firmware/dist/175/panel0/，文件名带 FW_VERSION（当前 v1.0.0-sidebtn）
+# 产物 firmware/dist/175/panel0/，文件名带 FW_VERSION
 #   *_app_0x10000.bin    应用镜像，烧到 0x10000，保留 NVS（配对和设置不丢）
 #   *_full_0x0.bin       整片镜像，烧到 0x0 并 --erase-all（救砖用，清空所有数据）
 #   *_manifest.json      大小 + SHA256
@@ -320,7 +323,7 @@ Windows 编不了 iOS，走 GitHub Actions。Actions 已启用，工作流在 `.
 
 开发一批内容、自己确认没问题了，再主动出包装机测试。**任何 push 都不应该自动触发构建。**
 
-仓库里有 4 个工作流，配置目标是「1 个启用 + 3 个禁用」，2026-11-03 已按此设置：
+仓库里有 4 个工作流，配置目标是「1 个启用 + 3 个禁用」：
 
 | 工作流 | 触发条件 | 状态 |
 |---|---|---|
@@ -374,30 +377,11 @@ iOS 出包：`Run workflow` → 选分支 → note 填本次改了什么 → 跑
 
 ---
 
-## 10. 当前状态
+## 10. 需求与进度
 
-本节是 2026-11-03 14:40 的快照。**动手前先用 `git log` / `git status` / `git tag` 核一遍，不要直接相信这里的推送状态** —— 这一天里它就落后过三次。
+需求、进度、阻塞项、验收记录**只在 `docs/需求清单.md` 维护**。本文档不记录做到哪一步，避免同一个状态在两处各写一遍然后互相过期。
 
-已经确认的事实：
-
-- 本地固件 `pages.4` 的 SHA256 与 manifest 一致，可用；上游已到 `phone.8`，主要改进是换图分步解码 339ms → 123ms
-- 上游 `phone.8` 的 Windows 一键包和 IPA 已下载校验，放在仓库外的本机目录 `..\latest-2026.11.01-r2\`
-- 设备：iPhone 16 Pro / iOS 27
-- iOS 侧载路线：iLoader → SideStore → 装 IPA，免费账号证书 7 天
-- 固件工具链**已装好**：Arduino CLI 1.5.1 + ESP32 Core 3.3.10，`firmware/build.py` 编译通过（app 1264KB / 41%，RAM 28%，0 warning）
-- iOS CI：Actions 已启用，`ios-quick` 启用（纯手动），`release-ios` / `release-firmware` / `android-verify` 已在网页上禁用
-- 代码工作副本：`C:\Users\codem\Documents\MyFile\moto\MotoNav`（git，origin 走 SSH）
-- `main` 是自己的开发主线（不再是上游镜像）。**HEAD 和推送状态不要写在这里**，用 `git log -1` / `git status -sb` 现查
-- `fw-side-buttons` 分支保留在远端（内容已并入 main，暂不删）
-- tag 两个都已建、已推送：`upstream-phone.8` 指向 fork 起点 `e122516`；`fw-v1.0.0` 指向一次完整可打包的状态。`fw-v1.0.0` 曾指向 `7016de1`，因该状态打包会失败而重置过，属强制改写，用 `git describe --tags` 可查当前指向
-- 固件版本 `v1.0.0-sidebtn`，已烧录到设备并校验通过
-- 侧键功能已在真机验证：BOOT/PWR 翻页、长按带动画回首页均正常
-
-进度：
-
-- ✅ 侧键（`src/input/Buttons.h`）：短按翻页、长按 2 秒带动画回首页，已烧录验证
-- ⬜ 开屏动画：风格、配色、动画、logo 都要改，缺素材
-- ⬜ 首页：换成自定义动画或图画，缺素材
+排期或动手前现查：`git log -1`、`git status -sb`、`git tag -l`。
 
 ---
 
@@ -407,7 +391,10 @@ iOS 出包：`Run workflow` → 选分支 → note 填本次改了什么 → 跑
 |---|---|
 | `AGENTS.md`（本文件） | 项目总索引：架构、改动点、构建、硬约束、约定 |
 | `docs/MotoNav-技术文档.md` | 933 行深度文档，协议逐条、时序、地图管线、侧载方案 |
+| `docs/需求清单.md` | 需求、进度、阻塞项、验收记录（唯一记录处） |
 | `docs/IOS-CI-GUIDE.md` | iOS 云端出包 9 步操作 |
+| `scripts/home_sprites.py` | 生成主页占位立绘 `resources/HomeSprites.h`（2bpp） |
+| `scripts/home_preview.py` | PC 端预览主页画面，输出 `scripts/preview/*.png`，需 Pillow |
 | `.github/workflows/ios-quick.yml` | 精简工作流，8~15 分钟出 unsigned IPA |
 | `firmware/README.md` | 上游固件说明（描述上游 `7.12.10-phone.8`，不随本仓库版本变） |
 | `docs/RELEASE-IOS-FIRMWARE-2026-11-01.md` | 上游 `phone.8` 发布说明 |

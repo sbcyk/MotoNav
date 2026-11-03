@@ -38,6 +38,12 @@ private*
 __pycache__/
 *.pyc
 
+# 参考素材与预览图（不进仓库）
+pic/
+
+# 主页预览图（脚本生成）
+scripts/preview/
+
 # Editor projects
 .idea/
 .vscode/

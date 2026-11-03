@@ -71,6 +71,8 @@ void touchPoll() {
       if (page==0 && navArrivedHold && abs(touchX1-touchX0)<36 && abs(touchY1-touchY0)<36) {
         resetNavState();drawWaiting(bleConnected && bleAuthed ? WAIT_READY : WAIT_NOLINK);
       }
+      // v1.1 主页点一下：开 / 关信息浮层（导航中不响应，留给地图手势）
+      if (page == 0 && !inNav && !navArrivedHold && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) homeToggleInfo();
       if (page == 2 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) musicTap(touchX0, touchY0);
       if (page == 1 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) weatherTap();
       dragEnd();

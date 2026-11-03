@@ -26,7 +26,7 @@ def package(output, dest, version):
     manifest = dict(firmware=version, platform="universal", board='Waveshare ESP32-S3-Touch-AMOLED-1.75',
                     esp32Core='3.3.10', flashSize='16MB', partition='app3M_fat9M_16MB',
                     verifiedApplicationOffset='0x10000', deviceTested=False, files=entries)
-    (dest / f'{label}_manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+    (dest / f'{label}_manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     return dest
 
 
@@ -38,7 +38,8 @@ def main():
     if not 1 <= args.jobs <= 32:
         parser.error('--jobs must be between 1 and 32')
     source = ROOT / 'boards/175/MotoNav'
-    version = re.search(r'^#define FW_VERSION "v([^\"]+)"', (source / 'src/core/FirmwareConfig.h').read_text(), re.MULTILINE).group(1)
+    # 源码头文件是 UTF-8（含中文注释）；Windows 下 Path.read_text 默认按 GBK 解码会直接抛错
+    version = re.search(r'^#define FW_VERSION "v([^\"]+)"', (source / 'src/core/FirmwareConfig.h').read_text(encoding='utf-8'), re.MULTILINE).group(1)
     build = ROOT / '.build' / 'universal' / '175'
     output = build / 'output'
     output.mkdir(parents=True, exist_ok=True)
