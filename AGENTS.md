@@ -303,6 +303,21 @@ FQBN 固定为：
 esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRAM=opi,CDCOnBoot=cdc
 ```
 
+### 32MB 分区方案（ESP32 Core 3.3.10 可选菜单，取自 core 的 `boards.txt` 与 `tools/partitions/*.csv`）
+
+| 菜单项 | 分区表 | app0 | app1（OTA） | 文件系统 | coredump |
+| --- | --- | --- | --- | --- | --- |
+| `app5M_fat24M_32MB`（当前） | `large_fat_32MB` | 4.50MB @0x10000 | 4.50MB @0x490000 | ffat 22.875MB @0x910000 | 64KB @0x1FF0000 |
+| `app13M_data7M_32MB` | `default_32MB` | 12.50MB @0x10000 | 12.50MB @0xC90000 | spiffs 6.75MB @0x1910000 | 64KB @0x1FF0000 |
+
+事实说明（不含取舍建议）：
+
+- 分区表只决定代码和文件写入的地址与上限，不改变 Flash 模式/频率、PSRAM 模式、CPU 频率与 cache 配置，因此与运行速度无关。
+- 切换方案必须整片刷（`--erase-all`），NVS 位于 `0x9000`，其余区域地址随方案变化，设置与手机配对会清空。
+- 当前固件占用 app0 1,308,352 字节（镜像），约 4.50MB 方案的 28%、12.50MB 方案的 10%。
+- 当前固件未挂载任何文件系统：源码中无 `FATFS`/`FFat`/`SPIFFS` 引用，上述 ffat / spiffs 分区目前均为未使用空间。
+- `max_app_32MB.csv`（单槽 31.87MB，无 OTA、无文件系统）存在于 `tools/partitions/`，但不是菜单项，要使用需自定义分区表。
+
 `build.py` 会从 `src/core/FirmwareConfig.h` 里正则抓 `#define FW_VERSION "v..."` 当版本号，格式必须带 `v` 前缀。链接参数 `-Wl,--wrap=xTaskCreatePinnedToCore` 来自 `MotoNavIpcStackGuard`，删了这个库会丢掉 IPC 栈越界的修复，表现为蓝牙初始化时反复重启。
 
 ### 安卓（不在维护范围）
