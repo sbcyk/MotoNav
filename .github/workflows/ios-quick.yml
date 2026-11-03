@@ -1,0 +1,108 @@
+name: iOS Quick Build (unsigned IPA)
+
+# 只做三件事：装 CocoaPods 依赖 -> xcodebuild 编译 -> 上传 unsigned IPA
+# 不跑仓库里的单元/一致性测试。改协议层时请改用官方 release-ios.yml。
+#
+# 放置位置：仓库根目录 .github/workflows/ios-quick.yml
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: '要构建的分支（留空则用当前分支）'
+        required: false
+        default: ''
+      note:
+        description: '本次改动备注（会写进 artifact 文件名）'
+        required: false
+        default: 'ui'
+  push:
+    branches:
+      - 'ui-**'        # 推 ui- 开头的分支自动触发
+    paths:
+      - 'ios/**'
+      - 'scripts/build-ios-ipa.sh'
+      - '.github/workflows/ios-quick.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: motonav-ios-quick-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ipa:
+    runs-on: macos-26          # 与官方工作流一致；若提示该 label 不可用，改成 macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+          fetch-depth: 1
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          sw_vers
+
+      - name: Restore CocoaPods cache
+        uses: actions/cache/restore@v4
+        id: pods
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods/repos
+          key: ios-pods-${{ runner.os }}-${{ hashFiles('ios/Podfile.lock') }}
+
+      - name: Install CocoaPods 1.16.2
+        run: sudo gem install cocoapods -v 1.16.2 --no-document
+
+      - name: pod install (deployment)
+        timeout-minutes: 12
+        working-directory: ios
+        run: pod _1.16.2_ install --deployment
+
+      - name: Save CocoaPods cache
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods/repos
+          key: ios-pods-${{ runner.os }}-${{ hashFiles('ios/Podfile.lock') }}
+
+      - name: Build unsigned IPA
+        env:
+          MOTONAV_DERIVED_DATA: ${{ runner.temp }}/Derived
+        run: |
+          set -o pipefail
+          bash scripts/build-ios-ipa.sh | tee build-ios.log
+
+      - name: Collect outputs
+        id: out
+        run: |
+          set -euo pipefail
+          IPA=$(ls output/ios/*.ipa | head -1)
+          BASE=$(basename "$IPA")
+          NOTE="${{ inputs.note }}"
+          NOTE=${NOTE:-ui}
+          # 文件名加上备注和 run 号，方便在 artifact 列表里区分第几次构建
+          NEW="MotoNav-$(echo "$BASE" | sed 's/^MotoNav-//; s/\.ipa$//')-${NOTE}-r${{ github.run_number }}.ipa"
+          cp "$IPA" "output/ios/$NEW"
+          shasum -a 256 "output/ios/$NEW" | tee output/ios/SHA256SUMS.txt
+          echo "ipa=$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ steps.out.outputs.ipa || 'MotoNav-ipa-failed' }}
+          path: |
+            output/ios/*.ipa
+            output/ios/SHA256SUMS.txt
+            build-ios.log
+          if-no-files-found: warn
+          retention-days: 15
