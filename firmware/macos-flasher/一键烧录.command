@@ -5,7 +5,7 @@ task_root="${0:A:h}"
 task_check=0
 task_full=0
 task_port=""
-task_version="7.12.10-phone.8"
+task_version="1.0.0-sidebtn"
 finish() {
   local task_code="$1"
   if [[ -t 0 && "$task_check" == 0 ]]; then
