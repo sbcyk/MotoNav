@@ -38,3 +38,6 @@ const int SDMMC_CLK = 2;
 const int SDMMC_CMD = 1;
 const int SDMMC_DATA = 3;
 const int SDMMC_CS = 41;
+
+// 侧键 BOOT（低有效；上电时按住进下载模式）。PWR 走 AXP2101 电源键，不占 GPIO。
+#define BTN_BOOT 0

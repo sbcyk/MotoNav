@@ -21,6 +21,7 @@
 #include "src/pages/IncomingCall.h"
 #include "src/pages/WeatherPage.h"
 #include "src/pages/PageNavigation.h"
+#include "src/input/Buttons.h"
 #include "src/map/MapState.h"
 #include "src/map/VectorMapReceiver.h"
 #include "src/map/RasterDecoder.h"
@@ -52,6 +53,7 @@ void setup() {
   Wire.begin(IIC_SDA, IIC_SCL);
   touchInit();                                         // v5.2 触摸屏
   batInit();                                           // v6.8 电源芯片（电量）
+  buttonsInit();                                       // 侧键：BOOT + PWR
 
   // v2.3 读取保存的屏幕数据线速度（默认 40MHz，和官方示例一样）
   {
@@ -99,6 +101,7 @@ void setup() {
   drawWaiting(WAIT_NOLINK);
   flushSync();
   needFlush = false;
+  buttonsArm();                                        // 开机画面播完，侧键开始响应
 
 #if FPS_SELFTEST
   runFpsSelfTest();
@@ -244,6 +247,7 @@ void loop() {
   if (mapNow) navDirty = true;
 
   touchPoll();                                         // v5.2 按住接听 / v5.3 滑动换页
+  buttonsPoll();                                       // 侧键：短按翻页 / 长按回首页
   batPoll();                                           // v6.8 电量
   // 4. 需要时重画导航画面
   // v6.5 配对：整屏显示配对码，配好 / 失败 / 60 秒 / 断开后回到原来的画面
