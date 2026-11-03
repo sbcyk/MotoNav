@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """离线预览圆屏主页（需 Pillow，仅 PC 用，不参与固件编译）。
 
-几何与颜色必须与 src/pages/HomePage.h 保持一致。
+几何、配色、绘制顺序必须与 src/pages/HomePage.h 保持一致；
+画面素材从 resources/HomeSprites.h 里读，和固件同一份数据。
 输出到 scripts/preview/*.png
 """
 import math
@@ -11,24 +12,16 @@ from PIL import Image, ImageDraw, ImageFont
 
 W = H = 466
 CX = 233
-BASE_Y = 352
-GRACE_H = 168
-GRACE_AMP = 12
-DUST_TOP = 300
-DUST_N = 34
+DUST_TOP = 150
+DUST_N = 26
 FONT = "C:/Windows/Fonts/consola.ttf"
 
-H_AMBER = 0xFE0B
-H_HOLY = 0xFEF2
-H_PALE = 0xFF9A
+H_AMBER = 0xFD46
+H_HOLY = 0xFE90
 H_DUST = 0xFDEB
-H_SOIL = 0x528C
-H_SOIL_D = 0x31A6
-H_STONE = 0x2945
+H_SPECTRAL_HI = 0xEFFF
 H_CARD = 0x10A3
 H_CARD_ED = 0x39E7
-H_SPECTRAL = 0x7BEF
-H_SPECTRAL_HI = 0xEFFF
 C_WHITE = 0xFFFF
 C_GREY = 0x7BEF
 C_GREEN = 0x07E0
@@ -38,158 +31,128 @@ def rgb565(c):
     return (((c >> 11) & 31) * 255 // 31, ((c >> 5) & 63) * 255 // 63, (c & 31) * 255 // 31)
 
 
-def hdim(c, k):
-    k = max(0, min(32, int(k)))
-    r, g, b = (c >> 11) & 31, (c >> 5) & 63, c & 31
-    return ((r * k >> 5) << 11) | ((g * k >> 5) << 5) | (b * k >> 5)
-
-
-def hmix(c, a):
-    return hdim(c, int(a * 32 + 0.5))
-
-
-class Scene:
-    def __init__(self):
-        self.img = Image.new("RGB", (W, H), (0, 0, 0))
-        self.d = ImageDraw.Draw(self.img)
-
-    def rect(self, x, y, w, h, c):
-        self.d.rectangle([x, y, x + w - 1, y + h - 1], fill=rgb565(c))
-
-    def ellipse(self, x, y, rx, ry, c):
-        self.d.ellipse([x - rx, y - ry, x + rx, y + ry], fill=rgb565(c))
-
-    def ellipse_line(self, x, y, rx, ry, c):
-        self.d.ellipse([x - rx, y - ry, x + rx, y + ry], outline=rgb565(c))
-
-    def disc(self, x, y, r, c):
-        self.d.ellipse([x - r, y - r, x + r, y + r], fill=rgb565(c))
+def blend565(a, b, t):
+    it = 255 - t
+    r = (((a >> 11) & 31) * it + ((b >> 11) & 31) * t + 127) // 255
+    g = (((a >> 5) & 63) * it + ((b >> 5) & 63) * t + 127) // 255
+    bl = ((a & 31) * it + (b & 31) * t + 127) // 255
+    return (r << 11) | (g << 5) | bl
 
 
 _HDR = (Path(__file__).resolve().parent.parent /
         "firmware/boards/175/MotoNav/resources/HomeSprites.h").read_text(encoding="utf-8")
 
 
-def _grab(name):
-    w = int(re.search(rf"#define {name}_W (\d+)", _HDR).group(1))
-    h = int(re.search(rf"#define {name}_H (\d+)", _HDR).group(1))
-    x = int(re.search(rf"#define {name}_X (-?\d+)", _HDR).group(1))
-    y = int(re.search(rf"#define {name}_Y (-?\d+)", _HDR).group(1))
-    pal = [int(v, 16) for v in re.findall(
-        r"0x([0-9A-Fa-f]{4})", _HDR[_HDR.index(f"{name}_PAL[16]"):].split(";")[0])]
+def _num(name):
+    return int(re.search(rf"#define {name} (-?\d+)", _HDR).group(1))
+
+
+def _grab8(name):
+    w = _num(f"{name}_W")
+    h = _num(f"{name}_H")
+    seg = _HDR[_HDR.index(f"{name}_PAL[256]"):]
+    pal = [int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]{4})", seg[:seg.index("};")])]
     body = _HDR[_HDR.index(f"{name}_BITS["):]
     body = body[body.index("{") + 1:body.index("};")]
     data = bytes(int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]{2})", body))
-    stride = (w + 1) // 2
-    img = Image.new("L", (w, h), 0)
+    img = Image.new("L", (w, h))
+    img.putdata(list(data))
+    return img, pal
+
+
+_OFF, _OPAL = _grab8("SCENE_OFF")
+_ON, _NPAL = _grab8("SCENE_ON")
+BEAM_OFF = (_num("HOME_BEAM_OFF_X"), _num("HOME_BEAM_OFF_Y"))
+BEAM_ON = (_num("HOME_BEAM_ON_X"), _num("HOME_BEAM_ON_Y"))
+
+
+def base_image(mix):
+    m = int(mix * 255 + 0.5)
+    opx, npx = _OFF.load(), _ON.load()
+    w, h = _OFF.size
+    img = Image.new("RGB", (w, h))
     px = img.load()
-    for row in range(h):
-        for col in range(w):
-            b = data[row * stride + (col >> 1)]
-            px[col, row] = (b >> 4) & 0x0F if col % 2 == 0 else b & 0x0F
-    return img, x, y, pal
+    for y in range(h):
+        for x in range(w):
+            a, b = opx[x, y], npx[x, y]
+            c = _OPAL[a] if m <= 0 else (_NPAL[b] if m >= 255 else blend565(_OPAL[a], _NPAL[b], m))
+            px[x, y] = rgb565(c)
+    return img.resize((W, H), Image.NEAREST)
 
 
-_M, _MX, _MY, _MPAL = _grab("TORRENT")
+class Scene:
+    def __init__(self):
+        self.img = None
+        self.d = None
+
+    def load(self, mix):
+        self.img = base_image(mix)
+        self.d = ImageDraw.Draw(self.img)
+
+    def px(self):
+        return self.img.load()
+
+    def add_span(self, x, y, w, c, k):
+        if k <= 0 or w <= 0 or y < 0 or y >= H:
+            return
+        x0, x1 = max(0, x), min(W, x + w)
+        if x0 >= x1:
+            return
+        cr = (((c >> 11) & 31) * k) >> 4
+        cg = (((c >> 5) & 63) * k) >> 4
+        cb = ((c & 31) * k) >> 4
+        px = self.img.load()
+        for i in range(x0, x1):
+            r, g, b = px[i, y]
+            px[i, y] = (min(255, r + cr * 255 // 31), min(255, g + cg * 255 // 63),
+                        min(255, b + cb * 255 // 31))
+
+    def add_ellipse(self, cx, cy, rx, ry, c, kmax):
+        if rx <= 0 or ry <= 0 or kmax <= 0:
+            return
+        for j in range(-ry, ry + 1):
+            v = 1.0 - (j * j) / float(ry * ry)
+            if v <= 0:
+                continue
+            w = int(rx * math.sqrt(v))
+            if w <= 0:
+                continue
+            self.add_span(cx - w, cy + j, w * 2, c, int(kmax * v + 0.5))
+
+    def disc(self, x, y, r, c):
+        self.d.ellipse([x - r, y - r, x + r, y + r], fill=rgb565(c))
 
 
-def blit4bpp(s, img, pal, ox, oy, a=1.0, reveal=1.0):
-    px = img.load()
-    k = max(0, min(32, int(a * 32)))
-    rows = img.size[1] if reveal >= 1.0 else int(img.size[1] * reveal)
-    skip = img.size[1] - rows
-    for yy in range(skip, img.size[1]):
-        for xx in range(img.size[0]):
-            v = px[xx, yy]
-            if v:
-                s.img.putpixel((ox + xx, oy + yy), rgb565(hdim(pal[v], k)))
+def beam(mix):
+    return (int((BEAM_OFF[0] + (BEAM_ON[0] - BEAM_OFF[0]) * mix) * 2),
+            int((BEAM_OFF[1] + (BEAM_ON[1] - BEAM_OFF[1]) * mix) * 2))
 
 
-def grace_ground(s, breath):
-    for i in range(22):
-        f = i / 22.0
-        w = int(120 * (1 - f * f))
-        if w <= 0:
-            break
-        s.rect(CX - w, 344 + i, w * 2, 1, hdim(H_AMBER, int(7 * (1 - f) * breath)))
-    pebbles = [(70, 384, 10, 4, 12), (112, 394, 8, 3, 10), (156, 386, 7, 3, 11),
-               (300, 390, 9, 4, 12), (344, 382, 8, 3, 11), (388, 392, 7, 3, 10),
-               (198, 400, 11, 4, 12), (262, 396, 9, 4, 11)]
-    for (x, y, rx, ry, k) in pebbles:
-        s.ellipse(x, y, rx, ry, hdim(H_STONE, k))
-
-
-def grace_mound(s):
-    s.ellipse(CX, 352, 30, 10, H_SOIL_D)
-    s.ellipse(CX, 350, 22, 7, H_SOIL)
-    s.ellipse(CX, 348, 13, 4, hdim(H_HOLY, 20))
-
-
-def grace_ring(s, breath):
-    s.ellipse(CX, 356, 48, 10, hdim(H_AMBER, int(4 * breath)))
-    s.ellipse_line(CX, 356, 60, 15, hdim(H_HOLY, int(10 * breath)))
-    s.ellipse_line(CX, 356, 50, 12, hdim(H_HOLY, int(17 * breath)))
-    s.ellipse_line(CX, 356, 40, 10, hdim(H_HOLY, int(8 * breath)))
-
-
-def grace_pulse(s, now, boost):
-    p = math.fmod(now * 0.00042, 1.0)
-    r = 30 + int(65 * p)
-    s.ellipse_line(CX, 356, r, r // 4, hdim(H_HOLY, int(14 * (1 - p) * boost)))
-
-
-def grace(s, now, breath, boost=1.0):
-    flick = 0.84 + 0.16 * math.sin(now * 0.0071)
-    hgt = GRACE_H + int(GRACE_AMP * math.sin(now * 0.0009))
-    top_y = BASE_Y - hgt
-    for i in range(7):
-        f = i / 6.0
-        s.ellipse(CX, top_y + 62, int(26 * (1 - 0.62 * f)), int(62 * (1 - 0.62 * f)),
-                  hdim(H_AMBER, int((1 + 5 * f) * breath * boost)))
-    for i in range(hgt):
-        t = i / hgt
-        u = 1 - t
-        xx = CX + int(math.sin(t * 4.6 + now * 0.0014) * (2 + 8 * t))
-        w = int(9.0 * u * math.sqrt(u))
-        if w > 0:
-            s.rect(xx - w, BASE_Y - i, w * 2, 1, hdim(H_AMBER, int(12 * u * flick * boost)))
-        w2 = int(5.8 * (u ** 0.7) + 1.0)
-        s.rect(xx - w2, BASE_Y - i, w2 * 2, 1,
-               hdim(H_HOLY if i % 7 else H_PALE, int(30 * u * flick * boost)))
-    s.ellipse(CX, 350, 22, 7, hdim(H_HOLY, int(16 * boost)))
-    s.ellipse(CX, 350, 13, 5, hdim(H_HOLY, int(26 * boost)))
-    s.ellipse(CX, 350, 6, 2, H_PALE)
-
-
-def dust(s, now, boost=1.0):
+def dust(s, now, mix, boost=1.0):
+    """光尘：加色点，跟固件 hEffects 同一套参数。"""
+    bx, by = beam(mix)
     for i in range(DUST_N):
-        ph = math.fmod(i / DUST_N + now * 0.00011, 1.0)
-        y = 348 - int(ph * DUST_TOP)
-        spread = 8 + ph * 58
-        x = CX + int(math.sin(i * 2.7 + ph * 7.5 + now * 0.0012) * spread)
+        ph = math.fmod(i / DUST_N + now * 0.00009, 1.0)
+        y = by - int(ph * DUST_TOP)
+        spread = 6 + ph * 26
+        x = bx + int(math.sin(i * 2.7 + ph * 7.5 + now * 0.0011) * spread)
         fade = 1 - ph
-        k = int(34 * fade * fade * boost)
-        if k <= 1:
+        k = int(7 * fade * fade * boost)
+        if k <= 0:
             continue
-        s.disc(x, y, 2.2 if ph < 0.3 else 1.2, hdim(H_DUST if i % 4 else H_PALE, k))
+        r = 2 if ph < 0.3 else 1
+        s.add_ellipse(x, y, r, r, H_DUST if i % 4 else H_HOLY, k)
 
 
-def torrent(s, a, reveal):
-    if a <= 0.01 or reveal <= 0.01:
-        return
-    blit4bpp(s, _M, _MPAL, _MX, _MY, a, reveal)
-
-
-def summon_fx(s, now, p, direction=1):
-    t = p if direction > 0 else 1 - p
-    r = 24 + int(72 * t)
-    s.ellipse_line(CX, 356, r, max(1, r // 4), hdim(H_SPECTRAL, int(6 + 16 * (1 - t))))
-    for i in range(12):
-        ang = i * 0.524 + now * 0.0013
-        d = (1 - t) * (40 + i * 8)
-        px = CX + int(math.cos(ang) * d)
-        py = 350 - int(math.sin(ang) * d * 0.6) - int(t * 60)
-        s.disc(px, py, 1.5, hmix(H_SPECTRAL_HI if i % 3 else H_PALE, 0.85 * t))
+def flare(s, now, mix, boost=1.0):
+    bx, by = beam(mix)
+    breath = 0.75 + 0.25 * math.sin(now * 0.0011)
+    k = int((1.5 + 1.5 * breath) * boost + 0.5)
+    s.add_ellipse(bx, by - 6, 26, 9, H_AMBER, k)
+    s.add_ellipse(bx, by - 12, 12, 5, H_HOLY, k)
+    if boost > 1.05:
+        r = 20 + int(60 * (boost - 1.0) / 0.7)
+        s.add_ellipse(bx, by, r, r // 4, H_SPECTRAL_HI, int((boost - 1.0) * 6))
 
 
 def centered(s, text, y, size, color):
@@ -207,7 +170,7 @@ def info_card(s):
     centered(s, "LINKED", 266, 2, C_GREEN)
     centered(s, "MotoNav-3F2A", 290, 2, C_GREY)
     centered(s, "BAT 87%", 312, 2, C_GREY)
-    centered(s, "v1.1.1  40MHz", 336, 1, C_GREY)
+    centered(s, "v2.0.0  40MHz", 336, 1, C_GREY)
     centered(s, "TAP TO CLOSE", 350, 1, 0x4208)
 
 
@@ -220,27 +183,16 @@ def crop(s):
 
 
 def render(mode, now=1428):
-    breath = 0.88 + 0.12 * math.sin(now * 0.0011)
+    if mode == "nolink":
+        mix, boost = 0.0, 1.0
+    elif mode == "summon":                    # 刚切到已连接：火还没闪完
+        mix, boost = 1.0, 1.45
+    else:                                     # ready / info
+        mix, boost = 1.0, 1.0
     s = Scene()
-    if mode == "summon":
-        p = 0.45
-        boost = 1.0 + 0.7 * (1 - p)
-        rp = min(1.0, p / 0.6)
-        horse_a = p / 0.25 * 0.35 if p < 0.25 else 0.35 + (p - 0.25) / 0.75 * 0.65
-        horse_r = rp
-    else:
-        boost = 1.0
-        horse_a = 1.0 if mode in ("ready", "info") else 0.0
-        horse_r = horse_a
-    grace_ground(s, breath)
-    grace_mound(s)
-    grace_ring(s, breath)
-    grace_pulse(s, now, boost)
-    torrent(s, horse_a, horse_r)
-    grace(s, now, breath, boost)
-    dust(s, now, boost)
-    if mode == "summon":
-        summon_fx(s, now, 0.45)
+    s.load(mix)
+    flare(s, now, mix, boost)
+    dust(s, now, mix, boost)
     if mode == "info":
         info_card(s)
     return crop(s)

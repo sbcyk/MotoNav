@@ -137,7 +137,7 @@ firmware/
 
 | 文件 | 内容 |
 |---|---|
-| `src/pages/HomePage.h` | 骑行前默认界面：赐福（金色光丝 + 地面法阵 + 上升光尘，纯代码绘制，无素材）。不画人，画面即褪色者视角；连上后光丝骤亮、灵马从光里凝聚，断连散去。整帧重画 + 异步推屏，`HOME_FRAME_MS` 控制到 25fps。点屏幕开信息浮层，6 秒自动收起。三态 `WAIT_READY / WAIT_NOLINK / WAIT_LOST` |
+| `src/pages/HomePage.h` | 骑行前默认界面：像素风黄昏赐福，两幅画面存在 `resources/HomeSprites.h`（8bpp 索引、233×233、各约 54KB 在 flash，显示按 2× 放大）：未连接=褪色者独坐赐福旁（远处王城与远山），已连接=托雷特站在他身后，两格同一取景比例。连上 / 断开立即换画面并在赐福处闪一下（320ms 加色），光尘从火光升起。绘制分整帧（进页面 / 切换状态 / 浮层）与局部（静置 10fps 只擦光尘那一小块），推屏走同步单缓冲。点屏幕开信息浮层，6 秒自动收起。三态 `WAIT_READY / WAIT_NOLINK / WAIT_LOST` |
 | `src/pages/NavigationPage.h` | 导航主界面 |
 | `src/pages/WeatherPage.h` | 天气页（第 2 页） |
 | `src/pages/IncomingCall.h` | 来电界面 + **`touchPoll()` 全部触摸逻辑** |
@@ -278,6 +278,8 @@ UI 是脏标记 + 按需重绘，不是固定帧率。项目里说的"帧率"指
 
 每次出包后把 `dist/175/panel0/` 拷一份到本机的 `..\builds\<日期>-<分支>\`（仓库外）并生成 SHA256，换机器时可以不重编直接烧。
 
+编译偶发 `internal compiler error: in try_forward_edges, at cfgcleanup.cc:580`（xtensa GCC 的已知缺陷，和代码内容无关），重跑一次即可，不必改代码。
+
 `build.py` 只写新文件、不删旧文件。改过 `FW_VERSION` 之后 `dist/` 里会同时存在两个版本号的产物，按文件名挑，或者先清空目录再编。
 
 ### 生成物（都不进 git）
@@ -416,7 +418,7 @@ iOS 出包：`Run workflow` → 选分支 → note 填本次改了什么 → 跑
 | `CHANGELOG.md` | 版本改动摘要，Keep a Changelog 格式（发版时写） |
 | `docs/需求清单.md` | 需求、进度、阻塞项、验收记录（唯一记录处） |
 | `docs/IOS-CI-GUIDE.md` | iOS 云端出包 9 步操作 |
-| `scripts/home_sprites.py` | 生成主页占位立绘 `resources/HomeSprites.h`（2bpp） |
+| `scripts/home_sprites.py` | 从参考图 `pic/home_reference.png`（不进仓库）生成主页两幅画面 `resources/HomeSprites.h`（8bpp 233×233）。参考图 3:1，两格各取一块 512 宽、整格高的方形原图（上格 512×504、下格 512×512），缩放比一致，切换状态不会跳景别 |
 | `scripts/home_preview.py` | PC 端预览主页画面，输出 `scripts/preview/*.png`，需 Pillow |
 | `.github/workflows/ios-quick.yml` | 精简工作流，8~15 分钟出 unsigned IPA |
 | `firmware/README.md` | 上游固件说明（描述上游 `7.12.10-phone.8`，不随本仓库版本变） |
