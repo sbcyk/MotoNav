@@ -1,7 +1,8 @@
 name: iOS Quick Build (unsigned IPA)
 
 # 只做三件事：装 CocoaPods 依赖 -> xcodebuild 编译 -> 上传 unsigned IPA
-# 不跑仓库里的单元/一致性测试。改协议层时请改用官方 release-ios.yml。
+# 不跑仓库里的单元/一致性测试。改到协议层、需要完整回归时，先在网页上启用
+# 官方 release-ios.yml，手动跑一次再禁用。
 #
 # 纯手动：没有任何 push / PR 触发，只在 Actions 页面点 Run workflow 才跑。
 # 这样推代码不会自动占用构建时间，要出包装机时再手动点。
@@ -16,7 +17,7 @@ on:
       note:
         description: '本次改动备注（会写进 artifact 文件名）'
         required: false
-        default: 'ui'
+        default: 'build'
 
 permissions:
   contents: read
@@ -60,7 +61,8 @@ jobs:
         run: pod _1.16.2_ install --deployment
 
       - name: Save CocoaPods cache
-        if: success()
+        # 命中缓存时不能再存一次：同 key 重复保存会报 "cache already exists" 并让整个 job 失败
+        if: success() && steps.pods.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
@@ -82,7 +84,7 @@ jobs:
           IPA=$(ls output/ios/*.ipa | head -1)
           BASE=$(basename "$IPA")
           NOTE="${{ inputs.note }}"
-          NOTE=${NOTE:-ui}
+          NOTE=${NOTE:-build}
           # 文件名加上备注和 run 号，方便在 artifact 列表里区分第几次构建
           NEW="MotoNav-$(echo "$BASE" | sed 's/^MotoNav-//; s/\.ipa$//')-${NOTE}-r${{ github.run_number }}.ipa"
           cp "$IPA" "output/ios/$NEW"

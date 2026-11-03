@@ -8,11 +8,11 @@
 
 | 项 | 值 |
 |---|---|
-| 你的 fork | `github.com/sbcyk/MotoNav`，public，main 为纯镜像 |
+| 你的 fork | `github.com/sbcyk/MotoNav`，public，main 是自己的开发主线 |
 | fork 的 parent | `CharlesXu/MotoNav`（工作流里仍引用旧名 `zyn950929/MotoNav`，属正常） |
-| iOS 源码 | `ios/` 172 个文件，`MotoNav.xcworkspace` + `Podfile` |
-| 官方工作流 | `.github/workflows/release-ios.yml`（macos-26，跑全套测试，20~40 分钟） |
-| **Actions 当前状态** | **未启用**（`/actions/workflows` 返回 `total_count: 0`），fork 默认关闭 |
+| iOS 源码 | `ios/` 129 个文件，`MotoNav.xcworkspace` + `Podfile` |
+| 官方工作流 | `.github/workflows/release-ios.yml`（macos-26，跑全套测试，20~40 分钟），**已禁用** |
+| Actions 状态 | 已启用；`ios-quick` 启用（纯手动），另外三个（`release-ios` / `release-firmware` / `android-verify`）已禁用 |
 | 构建脚本 | `scripts/build-ios-ipa.sh` → `CODE_SIGNING_ALLOWED=NO`，产物就是 unsigned IPA |
 | 依赖 | CocoaPods **1.16.2**（写死），`pod install --deployment` |
 | Pods | AMapNavi + AMapSearch（高德），平台 iOS 15.0 |
@@ -20,16 +20,22 @@
 
 ---
 
-## 1. 启用 Actions（一次性，必做）
+## 1. Actions 开关状态
 
-fork 出来的仓库 GitHub 不会自动注册工作流，必须先开：
+已配置好，不用再动。当前要求是「1 启用 + 3 禁用」：
 
-1. 打开 `https://github.com/sbcyk/MotoNav/settings/actions`
-2. **Actions permissions** 选 `Allow all actions and reusable workflows`
-3. 点 **Save**
-4. 打开 `https://github.com/sbcyk/MotoNav/actions`，若顶部出现 "Workflows aren't being run on this forked repository" 横幅，点 **I understand my workflows, go ahead and enable them**
+| 工作流 | 触发 | 状态 |
+|---|---|---|
+| `iOS Quick Build (unsigned IPA)` | 只有手动 | 启用 |
+| `iOS Build and Verify`（release-ios） | push main 且改 `ios/**` 或 `firmware/boards/175/MotoNav/**` | 禁用 |
+| 固件发布那个（release-firmware） | push main 且改 `firmware/**` | 禁用 |
+| `Android Verify` | push main 且改 `android/**` | 禁用 |
 
-验证：再访问 `/actions/workflows` 的 API 应该能看到 3 个 workflow。
+要改状态：`Actions` 页面 → 左侧点进工作流 → 右上角 `...` → `Disable workflow` / `Enable workflow`。
+
+禁用的原因：`firmware/**` 和 `firmware/boards/175/MotoNav/**` 匹配很宽，改一行固件就会触发一轮 40 分钟的 iOS 构建加一轮打包，而多数改动并不需要出包。
+
+禁用状态记在 GitHub 上，不在代码里。**每次同步上游后要扫一眼左侧列表**，上游新增的工作流进来后默认是启用的。
 
 ---
 
@@ -69,7 +75,7 @@ Actions → 左侧 `iOS Quick Build (unsigned IPA)` → 右侧 `Run workflow` �
 
 ## 5. 自签装机
 
-沿用你现在这套（文档第 12 章）：iLoader → SideStore → 装 IPA。
+沿用你现在的这套：iLoader → SideStore → 装 IPA。完整流程见 `docs/MotoNav-技术文档.md` 第 12 章。
 
 两点不能忘：
 - **免费 Apple ID 证书 7 天过期**，每 7 天要在手机上续签一次；
@@ -95,7 +101,7 @@ Actions → 左侧 `iOS Quick Build (unsigned IPA)` → 右侧 `Run workflow` �
 
 | 现象 | 原因 / 处理 |
 |---|---|
-| `The workflow is not valid` 或 Actions 页看不到刚推的工作流 | fork 未启用 Actions，回到第 1 步 |
+| Actions 页看不到 `iOS Quick Build`，或点了没反应 | 工作流被禁用或未注册。去 Actions 页面左侧确认它的状态，`...` 里可以 `Enable workflow` |
 | `macos-26` label 报错 | 改成 `macos-15`，或抄官方 workflow 里的 label |
 | `pod install --deployment` 失败 | `Podfile.lock` 与 `Podfile` 不一致。本地改过 Podfile 要同步提交 lock；实在不行临时改成 `pod install`（会改 lock，注意别提交） |
 | 高德 SDK 下载慢/超时 | 首次构建常见，缓存命中后就快了；重跑一次通常能过 |

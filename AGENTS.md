@@ -314,20 +314,20 @@ bash build-ios.sh    # Xcode + CocoaPods 1.16.2
 # 产物 output/ios/MotoNav-<ver>-build<n>-unsigned.ipa
 ```
 
-Windows 编不了 iOS，走 GitHub Actions：fork 上先启用 Actions（fork 默认关闭），工作流已在 `.github/workflows/ios-quick.yml`，手动触发，下载 artifact，用 iLoader / SideStore 自签。详细步骤见 `docs/IOS-CI-GUIDE.md`。
+Windows 编不了 iOS，走 GitHub Actions。Actions 已启用，工作流在 `.github/workflows/ios-quick.yml`，手动触发，下载 artifact，用 iLoader / SideStore 自签。详细步骤见 `docs/IOS-CI-GUIDE.md`。
 
 ### 打包时机：全手动
 
 开发一批内容、自己确认没问题了，再主动出包装机测试。**任何 push 都不应该自动触发构建。**
 
-仓库里有 4 个工作流，现状必须是「1 个启用 + 3 个禁用」：
+仓库里有 4 个工作流，配置目标是「1 个启用 + 3 个禁用」，2026-11-03 已按此设置：
 
-| 工作流 | 触发 | 要求的状态 |
+| 工作流 | 触发条件 | 状态 |
 |---|---|---|
 | `ios-quick.yml` | 只有 `workflow_dispatch` | **启用**，手动点 |
-| `release-ios.yml` | push main 且改 `ios/**` 或 `firmware/boards/175/MotoNav/**` | **网页上禁用** |
-| `release-firmware.yml` | push main 且改 `firmware/**` | **网页上禁用** |
-| `android-verify.yml` | push main 且改 `android/**` | **网页上禁用** |
+| `release-ios.yml` | push main 且改 `ios/**` 或 `firmware/boards/175/MotoNav/**` | **已禁用** |
+| `release-firmware.yml` | push main 且改 `firmware/**` | **已禁用** |
+| `android-verify.yml` | push main 且改 `android/**` | **已禁用** |
 
 `firmware/**` 这个匹配很宽，改一行固件就会命中；不禁用的话每推一次固件都要跑一轮 40 分钟的 iOS 构建加一轮打包。
 
@@ -385,7 +385,7 @@ iOS 出包：`Run workflow` → 选分支 → note 填本次改了什么 → 跑
 - 设备：iPhone 16 Pro / iOS 27
 - iOS 侧载路线：iLoader → SideStore → 装 IPA，免费账号证书 7 天
 - 固件工具链**已装好**：Arduino CLI 1.5.1 + ESP32 Core 3.3.10，`firmware/build.py` 编译通过（app 1264KB / 41%，RAM 28%，0 warning）
-- iOS CI 工作流已入库（`.github/workflows/ios-quick.yml`），**Actions 尚未在 GitHub 上启用**
+- iOS CI：Actions 已启用，`ios-quick` 启用（纯手动），`release-ios` / `release-firmware` / `android-verify` 已在网页上禁用
 - 代码工作副本：`C:\Users\codem\Documents\MyFile\moto\MotoNav`（git，origin 走 SSH）
 - `main` 是自己的开发主线（不再是上游镜像）。**HEAD 和推送状态不要写在这里**，用 `git log -1` / `git status -sb` 现查
 - `fw-side-buttons` 分支保留在远端（内容已并入 main，暂不删）
