@@ -43,13 +43,13 @@ try {
     if($taskManifest.schema -ne 1 -or $taskManifest.boards.Count -ne 1 -or $taskManifest.boards[0].id -ne '175'){throw '本包仅支持微雪1.75。'}
     $taskBoard=$taskManifest.boards[0]
     $taskVersion=$taskBoard.versions[0]
-    if($taskVersion.version -ne '1.1.1'){throw '固件清单版本不匹配。'}
+    if($taskVersion.version -ne '2.0.0'){throw '固件清单版本不匹配。'}
     $taskPanel=$taskVersion.panels[0]
     $taskApp=Resolve-PackageFile $taskPanel.app $false
     $taskFullFile=Resolve-PackageFile $taskPanel.full $true
     if(-not(Test-Path -LiteralPath $taskEsp -PathType Leaf)){throw '缺少tools\esptool.exe，请完整解压ZIP。'}
     Write-Host ''
-    Write-Host 'MotoNav 1.75 通用固件 1.1.1 一键烧录包' -ForegroundColor Magenta
+    Write-Host 'MotoNav 1.75 通用固件 2.0.0 一键烧录包' -ForegroundColor Magenta
     Write-Host '楼块连续保留；固定页面与时间；通用品牌开机' -ForegroundColor Cyan
     if($VerifyOnly){
         & $taskEsp version | Out-Host
@@ -58,8 +58,8 @@ try {
         exit 0
     }
     Write-Host '只适用于微雪1.75 AMOLED；不能刷到1.85B或M5Stack StopWatch。'
-    Write-Host '  1. 已有同板型、同分区MotoNav：升级，保留设置和配对（默认）'
-    Write-Host '  2. 首次安装/救砖：完整刷写，整片擦除，会清空设置和配对'
+    Write-Host '  1. 已有同板型、同分区MotoNav（2.0.0 起）：升级，保留设置和配对（默认）'
+    Write-Host '  2. 首次安装/救砖/从 16MB 分区旧固件升级：完整刷写，会清空设置和配对'
     while($true){
         $taskMode=(Read-Host '输入1或2；回车默认升级；Q退出').Trim()
         if($taskMode -eq 'Q'){exit 0}

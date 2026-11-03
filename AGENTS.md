@@ -76,12 +76,12 @@
 | 部件 | 参数 |
 |---|---|
 | 板子 | Waveshare ESP32-S3-Touch-AMOLED-1.75（圆屏） |
-| MCU | ESP32-S3，16MB Flash，8MB OPI PSRAM（R8 版本） |
+| MCU | ESP32-S3，32MB Flash，8MB OPI PSRAM（R8 版本） |
 | 屏幕 | CO5300，QSPI 4 线，466×466，默认 40MHz，可切 60/80 |
 | 触摸 | CST92xx（I2C），实机 X/Y 都反装，靠 `TOUCH_FLIP_X/Y=1` 纠正 |
 | 电源 | AXP2101（电量轮询、插电不自动关机） |
 | 音频 | ES8311（I2S），功放 PA 在 GPIO46 |
-| 存储 | SDMMC + 16MB Flash，分区 `app3M_fat9M_16MB`（app 3MB） |
+| 存储 | SDMMC + 32MB Flash，分区 `app5M_fat24M_32MB`（app 4.8MB，FAT 22MB） |
 
 引脚表见 `firmware/boards/175/MotoNav/pin_config.h`。
 
@@ -274,7 +274,7 @@ UI 是脏标记 + 按需重绘，不是固定帧率。项目里说的"帧率"指
   firmware/dist/175/panel0/*_app_0x10000.bin
 ```
 
-`COM4` 换成设备管理器里的实际串口。板子是 32MB Flash 版本（`flash-id` 实测），构建配置按 16MB 写：只烧 app 无影响，整片刷会浪费一半空间。
+`COM4` 换成设备管理器里的实际串口。板子实测为 32MB Flash（`flash-id` 读回 GigaDevice `c8 4019`），2.0.0 起构建和分区表都按 32MB 来；从 16MB 旧固件升级只能整片刷。
 
 每次出包后把 `dist/175/panel0/` 拷一份到本机的 `..\builds\<日期>-<分支>\`（仓库外）并生成 SHA256，换机器时可以不重编直接烧。
 
@@ -300,7 +300,7 @@ UI 是脏标记 + 按需重绘，不是固定帧率。项目里说的"帧率"指
 FQBN 固定为：
 
 ```
-esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi,CDCOnBoot=cdc
+esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRAM=opi,CDCOnBoot=cdc
 ```
 
 `build.py` 会从 `src/core/FirmwareConfig.h` 里正则抓 `#define FW_VERSION "v..."` 当版本号，格式必须带 `v` 前缀。链接参数 `-Wl,--wrap=xTaskCreatePinnedToCore` 来自 `MotoNavIpcStackGuard`，删了这个库会丢掉 IPC 栈越界的修复，表现为蓝牙初始化时反复重启。

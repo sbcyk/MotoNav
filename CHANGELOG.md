@@ -18,6 +18,17 @@
 
 ## [未发布]
 
+## [2.0.0] - 2026-11-03
+
+### 变更
+
+- 构建与分区改为 32MB：FQBN 改 `FlashSize=32M` + `PartitionScheme=app5M_fat24M_32MB`，app 分区 3MB → 4.8MB，FAT 9.9MB → 22MB。实机 `flash-id` 读回 GigaDevice `c8 4019`（256Mbit = 32MB）。
+- `backup.ps1` 改为整片读 32MB；Windows / Mac 烧录脚本的 `--flash-size` 同步为 32MB。
+
+### 破坏性变更
+
+- 分区表变化后，16MB 旧固件的“应用升级”路径失效：升级到 2.0.0 必须整片刷（`full_0x0` + 擦除），会清空设置与手机配对。
+
 ## [1.1.1] - 2026-11-03
 
 ### 修复

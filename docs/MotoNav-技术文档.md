@@ -141,13 +141,13 @@
 
 | 部件 | 型号/参数 | 在代码中的体现 |
 | --- | --- | --- |
-| MCU | ESP32-S3，构建要求 `PSRAM=opi`、`FlashSize=16M` | FQBN：`esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi,CDCOnBoot=cdc` |
+| MCU | ESP32-S3，构建要求 `PSRAM=opi`、`FlashSize=32M` | FQBN：`esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRAM=opi,CDCOnBoot=cdc` |
 | 屏幕 | **CO5300** QSPI AMOLED，**466×466** | `Arduino_CO5300(bus, LCD_RESET, 0, 466, 466, 6, 0,0,0)` |
 | 屏幕总线 | QSPI 4 线，默认 **40MHz**，可切 60/80MHz | `#q,60` 指令改并写 NVS 重启 |
 | 触摸 | CST92xx（I2C），`TOUCH_FLIP_X/Y=1`（实机左右上下都反） | `TouchDrvCSTXXX`（SensorLib） |
 | 电源管理 | **AXP2101** | 电量轮询、插电不自动关机 |
 | 音频 | ES8311 codec（I2S） | 来电铃声/提示音 |
-| 存储 | SDMMC + 16MB Flash（app3M_fat9M 分区） | 固件 3MB app 分区，NVS 存设置 |
+| 存储 | SDMMC + 32MB Flash（app5M_fat24M 分区） | 固件 4.8MB app 分区，FAT 22MB，NVS 存设置 |
 | PSRAM | 板载 OPI PSRAM（该型号为 R8 版本，8MB；**容量未经我实测，按微雪规格书为准**） | 所有大缓冲 `ps_malloc` |
 
 ### 4.2 引脚（`firmware/boards/175/MotoNav/pin_config.h`）
@@ -507,7 +507,7 @@ python3 firmware/build.py          # 或 firmware/build.ps1 -Board 175
 # 输出：firmware/dist/175/panel0
 ```
 
-FQBN：`esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi,CDCOnBoot=cdc`
+FQBN：`esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRAM=opi,CDCOnBoot=cdc`
 
 注意：必须保留 `firmware/libraries/MotoNavIpcStackGuard`，脚本会显式传 `-Wl,--wrap=xTaskCreatePinnedToCore`。
 
@@ -842,7 +842,7 @@ git checkout main && git merge --ff-only upstream/main && git push origin main
 | 21 字符限制 | 读秒版自定义包名有原生路径长度限制（21 个 ASCII），超长直接拒绝 |
 | `app/build/outputs` 的 APK | 只是编译验证产物，**不是**可安装的读秒版 |
 | NVS 布局 | `Preferences` 命名空间 `motonav`，键 `qspi`/`rot`/`rotd`/`bootbrand`/`mediahid`/`fastf`。改键名会导致老设备设置丢失 |
-| 分区表 | 必须是 `app3M_fat9M_16MB`。分区不同时"应用升级"会失败，只能整片刷 |
+| 分区表 | 必须是 `app5M_fat24M_32MB`。分区不同时“应用升级”会失败，只能整片刷（16MB 旧固件升 2.0.0 即属此例） |
 | 1.85B 分支 | 仓库里有 `firmware/boards/185b`，但固件停在 7.12.3-185B，**不能混刷 1.75 的镜像** |
 | iOS 后台限制 | 锁屏能继续发**已准备**的地图；偏航进未缓存区域仍需回到前台补图 |
 | 无实车回归 | 官方自己写明"测试回放不等于实路验证"，你的改动更需要自己上路测 |

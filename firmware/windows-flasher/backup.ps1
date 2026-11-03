@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference='Stop'
 try {
-    Write-Host '读取当前整片16MB Flash。已刷MotoNav的设备备份出来就是当前MotoNav，不是原厂固件。'
+    Write-Host '读取当前整片 32MB Flash。已刷 MotoNav 的设备备份出来就是当前 MotoNav，不是原厂固件。'
     $taskPorts=@([IO.Ports.SerialPort]::GetPortNames() | Sort-Object)
     Write-Host ('当前串口：'+($taskPorts -join '、'))
     $taskPort=(Read-Host '输入待备份圆屏的COM号；Q退出').Trim().ToUpperInvariant()
@@ -9,13 +9,13 @@ try {
     $taskBackupDir=Join-Path $PSScriptRoot 'backups'
     New-Item -ItemType Directory -Force $taskBackupDir | Out-Null
     $taskOutput=Join-Path $taskBackupDir ('当前Flash-'+$taskPort+'-'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'.bin')
-    & (Join-Path $PSScriptRoot 'tools\esptool.exe') --chip esp32s3 --port $taskPort --baud 460800 --after watchdog-reset read-flash 0x0 0x1000000 $taskOutput
+    & (Join-Path $PSScriptRoot 'tools\esptool.exe') --chip esp32s3 --port $taskPort --baud 460800 --after watchdog-reset read-flash --flash-size 32MB 0x0 0x2000000 $taskOutput
     if($LASTEXITCODE -ne 0){
         Write-Host '批量读取中断，改用芯片ROM方式重新读取；该方式较慢，请保持连接。'
-        & (Join-Path $PSScriptRoot 'tools\esptool.exe') --chip esp32s3 --port $taskPort --baud 115200 --no-stub --after watchdog-reset read-flash 0x0 0x1000000 $taskOutput
+        & (Join-Path $PSScriptRoot 'tools\esptool.exe') --chip esp32s3 --port $taskPort --baud 115200 --no-stub --after watchdog-reset read-flash 0x0 0x2000000 $taskOutput
         if($LASTEXITCODE -ne 0){throw '备份未完成；不完整文件不能用于恢复。'}
     }
-    if((Get-Item -LiteralPath $taskOutput).Length -ne 0x1000000){throw '备份大小不等于16MB。'}
+    if((Get-Item -LiteralPath $taskOutput).Length -ne 0x2000000){throw '备份大小不等于32MB。'}
     $taskHasher=[Security.Cryptography.SHA256]::Create()
     try{$taskHash=[BitConverter]::ToString($taskHasher.ComputeHash([IO.File]::ReadAllBytes($taskOutput))).Replace('-','')}
     finally{$taskHasher.Dispose()}
