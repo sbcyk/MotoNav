@@ -38,6 +38,11 @@ private*
 __pycache__/
 *.pyc
 
+# Editor projects
+.idea/
+.vscode/
+*.iml
+
 *.pk8
 *.x509.pem
 *.idsig
