@@ -4,6 +4,8 @@
 
 历史 Releases 和 Git 记录保留；这里归档的是旧教程与更新记录。
 
+本仓库自己发版后的改动摘要在仓库根的 `CHANGELOG.md`，不再往这里加新版本说明。
+
 - [INSTALL-BEGINNER.md](INSTALL-BEGINNER.md)
 - [INSTALL-IOS.md](INSTALL-IOS.md)
 - [MotoNav-Android-WorkBuddy-Guide.pdf](MotoNav-Android-WorkBuddy-Guide.pdf)
@@ -12,8 +14,6 @@
 - [RELEASE-ANDROID-8.3.21.md](RELEASE-ANDROID-8.3.21.md)
 - [RELEASE-ANDROID-8.3.23-webmotor.md](RELEASE-ANDROID-8.3.23-webmotor.md)
 - [RELEASE-ANDROID-8.3.26-single.31.md](RELEASE-ANDROID-8.3.26-single.31.md)
-- [RELEASE-FIRMWARE-1.1.0.md](RELEASE-FIRMWARE-1.1.0.md)
-- [RELEASE-FIRMWARE-1.1.1.md](RELEASE-FIRMWARE-1.1.1.md)
 - [RELEASE-FIRMWARE-7.12.1.md](RELEASE-FIRMWARE-7.12.1.md)
 - [RELEASE-FIRMWARE-7.12.10-pages.4.md](RELEASE-FIRMWARE-7.12.10-pages.4.md)
 - [RELEASE-FIRMWARE-7.12.3.md](RELEASE-FIRMWARE-7.12.3.md)
