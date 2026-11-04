@@ -38,10 +38,7 @@ private*
 __pycache__/
 *.pyc
 
-# 参考素材与预览图（不进仓库）
-pic/
-
-# 主页预览图（脚本生成）
+# 主页预览图与成品导出（脚本生成，不进仓库）
 scripts/preview/
 
 # Editor projects

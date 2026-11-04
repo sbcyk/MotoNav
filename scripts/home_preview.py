@@ -80,6 +80,60 @@ def base_image(mix):
     return img.resize((W, H), Image.NEAREST)
 
 
+def hnoise(x, y):
+    """与固件 hNoise 同一套位运算（uint32）。"""
+    v = ((x * 73856093) ^ (y * 19349663)) & 0xFFFFFFFF
+    v ^= v >> 13
+    v = (v * 0x5BD1E995) & 0xFFFFFFFF
+    v ^= v >> 15
+    return v & 255
+
+
+def pal_diff(a, b):
+    """RGB565 两色的分量差之和，0~127。与固件 hPalDiff 一致。"""
+    d = abs(((a >> 11) & 31) - ((b >> 11) & 31))
+    e = abs(((a >> 5) & 63) - ((b >> 5) & 63))
+    f = abs((a & 31) - (b & 31))
+    return d + e + f
+
+
+MIX_WMAX = 44      # 权重上限
+MIX_WMIN = 5       # 权重下限
+# 马在“已连接”那张里的位置（233 尺度）。必须与 HomePage.h 的 H_HORSE_CX/CY/RX/RY 一致，
+# 两边任何一处改了都要同步。
+HORSE = (52, 95, 62, 72)
+
+
+def mix_image(t):
+    """状态切换的抖动溶解（与固件 hMixScene 同一套公式）。
+
+    每个像素有一个“起翻时刻”：权重越高越早，n 是它在这个区间里的抖动位置。
+    两图差得多的像素（马、站起来的人）先翻先闪；本来一样的地方（火、天空）最后才翻，
+    翻过去也看不出来。注意整屏都会闪，不是只有马那一块。
+    """
+    k = int(t * 256)
+    w, h = _OFF.size
+    opx, npx = _OFF.load(), _ON.load()
+    img = Image.new("RGB", (w, h))
+    px = img.load()
+    for y in range(h):
+        for x in range(w):
+            ca, cb = _OPAL[opx[x, y]], _NPAL[npx[x, y]]
+            hx = (x - HORSE[0]) / HORSE[2]
+            hy = (y - HORSE[1]) / HORSE[3]
+            q = hx * hx + hy * hy
+            wgt = pal_diff(ca, cb) + (int(28 * (1 - q)) if q < 1 else 0)
+            if wgt > MIX_WMAX:
+                wgt = MIX_WMAX
+            speed = (MIX_WMIN + wgt) * 256 // (MIX_WMIN + MIX_WMAX)
+            start = max(0, 255 - speed * (255 - hnoise(x, y)) // 255)
+            c = cb if k > start else ca
+            if k > 0 and start >= k and start - k < 10 and wgt > 18:
+                c = H_HOLY if (x ^ y) & 1 else H_AMBER
+            px[x, y] = rgb565(c)
+    return img.resize((W, H), Image.NEAREST)
+
+
 class Scene:
     def __init__(self):
         self.img = None
@@ -87,6 +141,10 @@ class Scene:
 
     def load(self, mix):
         self.img = base_image(mix)
+        self.d = ImageDraw.Draw(self.img)
+
+    def load_mix(self, t):
+        self.img = mix_image(t)
         self.d = ImageDraw.Draw(self.img)
 
     def px(self):
@@ -151,8 +209,8 @@ def flare(s, now, mix, boost=1.0):
     s.add_ellipse(bx, by - 6, 26, 9, H_AMBER, k)
     s.add_ellipse(bx, by - 12, 12, 5, H_HOLY, k)
     if boost > 1.05:
-        r = 20 + int(60 * (boost - 1.0) / 0.7)
-        s.add_ellipse(bx, by, r, r // 4, H_SPECTRAL_HI, int((boost - 1.0) * 6))
+        r = 20 + int(12 * (boost - 1.0) / 0.6)
+        s.add_ellipse(bx, by, r, r // 4, H_SPECTRAL_HI, int((boost - 1.0) * 10))
 
 
 def centered(s, text, y, size, color):
@@ -204,3 +262,10 @@ if __name__ == "__main__":
     for mode in ("nolink", "summon", "ready", "info"):
         render(mode).save(dest / f"home_{mode}.png")
         print(dest / f"home_{mode}.png")
+    for t in (0.25, 0.5, 0.75):
+        s = Scene()
+        s.load_mix(t)
+        flare(s, 1428, t, 1.3)
+        dust(s, 1428, t, 1.3)
+        crop(s).save(dest / f"home_mix{int(t*100)}.png")
+        print(dest / f"home_mix{int(t*100)}.png")

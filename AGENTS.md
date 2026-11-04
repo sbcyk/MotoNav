@@ -137,7 +137,7 @@ firmware/
 
 | 文件 | 内容 |
 |---|---|
-| `src/pages/HomePage.h` | 骑行前默认界面：像素风黄昏赐福，两幅画面存在 `resources/HomeSprites.h`（8bpp 索引、233×233、各约 54KB 在 flash，显示按 2× 放大）：未连接=褪色者独坐赐福旁（远处王城与远山），已连接=托雷特站在他身后，两格同一取景比例。连上 / 断开立即换画面并在赐福处闪一下（320ms 加色），光尘从火光升起。绘制分整帧（进页面 / 切换状态 / 浮层）与局部（静置 10fps 只擦光尘那一小块），推屏走同步单缓冲。点屏幕开信息浮层，6 秒自动收起。三态 `WAIT_READY / WAIT_NOLINK / WAIT_LOST` |
+| `src/pages/HomePage.h` | 骑行前默认界面：像素风黄昏赐福，两幅画面存在 `resources/HomeSprites.h`（8bpp 索引、233×233、各约 54KB 在 flash，显示按 2× 放大）：未连接=褪色者独坐赐福旁（远处废墟与远山），已连接=托雷特站在他身旁、他站着牵缰。两幅取自不同参考图，取景宽度按“主体一样大”定（512 / 683），赐福火落在同一个屏幕位置。连上 / 断开走抖动溶解过渡（600ms，按两图差异加权、马那块权重最高、锋面点成金色光点）并在赐福处闪一下（320ms 加色），光尘从火光升起。绘制分整帧（进页面 / 切换状态 / 浮层）与局部（静置 10fps 只擦光尘那一小块），推屏走同步单缓冲；所有绘制裁到圆内（`hCircleSpan`）。点屏幕开信息浮层，6 秒自动收起。三态 `WAIT_READY / WAIT_NOLINK / WAIT_LOST` |
 | `src/pages/NavigationPage.h` | 导航主界面 |
 | `src/pages/WeatherPage.h` | 天气页（第 2 页） |
 | `src/pages/IncomingCall.h` | 来电界面 + **`touchPoll()` 全部触摸逻辑** |
@@ -212,6 +212,7 @@ UI 是脏标记 + 按需重绘，不是固定帧率。项目里说的"帧率"指
 - 功能改动在 `CHANGELOG.md` 的 `[未发布]` 段随手记一条，发版时再归并
 - 文档归属固定三处，不要再开新类型：**规范与架构 → 本文档**；**需求与进度 → `docs/需求清单.md`**；**版本改动摘要 → `CHANGELOG.md`**（Keep a Changelog 格式）。一处事实只写在一处，别处用链接指过去
 - 过程草稿、方案对比、预览图不进仓库；`scripts/preview/` 已在 `.gitignore`
+- 参考素材进仓库，统一放 `assets/reference/`（原始分辨率、原始字节，不改码率/尺寸），脚本只从那里读
 
 ---
 
@@ -418,7 +419,7 @@ iOS 出包：`Run workflow` → 选分支 → note 填本次改了什么 → 跑
 | `CHANGELOG.md` | 版本改动摘要，Keep a Changelog 格式（发版时写） |
 | `docs/需求清单.md` | 需求、进度、阻塞项、验收记录（唯一记录处） |
 | `docs/IOS-CI-GUIDE.md` | iOS 云端出包 9 步操作 |
-| `scripts/home_sprites.py` | 从参考图 `pic/home_reference.png`（不进仓库）生成主页两幅画面 `resources/HomeSprites.h`（8bpp 233×233）。参考图 3:1，两格各取一块 512 宽、整格高的方形原图（上格 512×504、下格 512×512），缩放比一致，切换状态不会跳景别 |
+| `scripts/home_sprites.py` | 生成主页两幅画面 `resources/HomeSprites.h`（8bpp 233×233，两幅各约 54KB）。两张参考图在 `assets/reference/`：<br>· 未连接 ← `home-dual-pose.png` 的**上格**（1536×1024 双姿态图，上格人独坐无马），取 512×504<br>· 已连接 ← `home-standing.png`（1536×1024 紧凑构图，人站着牵马），取 683×683<br>683 是按“主体一样大”量出来的：两图火焰列高度都是 129 px。**不要为了把王城框进来把这个数放大到 1024**——那样已连接那张整体缩到 67%，切换时肉眼可见镜头拉远。两张都让火落在同一个屏幕位置（233 尺度 OFF x=151 / ON x=155），切换时人和火不跳。`HOME_BEAM_*` 锚点由脚本求出：x 取“暖色高亮行数最多的那一列”，y 取每张图各自的基线常数；换参考图或改取景框后要重新量基线，对不上脚本会报错而不是静默跑偏 |
 | `scripts/home_preview.py` | PC 端预览主页画面，输出 `scripts/preview/*.png`，需 Pillow |
 | `.github/workflows/ios-quick.yml` | 精简工作流，8~15 分钟出 unsigned IPA |
 | `firmware/README.md` | 上游固件说明（描述上游 `7.12.10-phone.8`，不随本仓库版本变） |

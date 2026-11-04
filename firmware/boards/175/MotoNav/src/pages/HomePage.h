@@ -1,9 +1,11 @@
 #pragma once
 // 首页：黄昏赐福。两幅画面来自 resources/HomeSprites.h（8bpp 索引色，233x233，
-// 显示时按 2x 最近邻放大）：未连接是褪色者独坐赐福旁，已连接是托雷特站在他身后。
-// 两格取景比例一致，切换状态只换画面不换景别。素材由 scripts/home_sprites.py 生成。
+// 显示时按 2x 最近邻放大）：未连接是褪色者独坐赐福旁，已连接是托雷特站在他身旁、
+// 他站着牵缰。两幅取自不同的参考图，取景宽度按“主体一样大”定（512 / 683），
+// 且让赐福火落在同一个屏幕位置，切换时人和火不跳。素材由 scripts/home_sprites.py 生成。
 //
-// 绘制分两种：整帧（进页面 / 状态切换 / 浮层开关）和局部（静置时的光尘与火光）。
+// 绘制分三种：整帧（进页面 / 浮层开关）、溶解（状态切换的 600ms 过渡）、
+// 局部（静置时的光尘与火光）。
 // 推屏始终是整屏一次；省下来的是绘制量——局部只擦上一帧特效那一小块再重画，
 // 静置时每帧只有几百个像素级操作，整帧则要写满 18 万个显示像素。
 // 画面走同步推屏（单缓冲），局部更新才不会画到屏幕没在显示的那块缓冲上。
@@ -31,15 +33,17 @@ char homeClockDate[11] = {};
 #define H_DUST_SPAN  36        // 特效包围盒半宽（光尘实际散布 32，留 4 像素余量）
 #define HOME_FRAME_MS  100     // 静置 10fps：只重画光尘那一小块
 #define HOME_FLASH_MS  320     // 切换状态时赐福闪一下的时长
+#define HOME_MIX_MS    600     // 状态切换时两张图抖动溶解的时长
+#define MIX_WMIN       5       // 溶解权重下限：差异为 0 的像素末段也要翻过去，所以不能取 0
+#define MIX_WMAX      44       // 溶解权重上限
 
-// 两色按 t（0~255）混合，用移位代替除法：整帧混合时每像素都要算一次
-static inline uint16_t hmix565(uint16_t a, uint16_t b, int t) {
-  const int it = 255 - t;
-  const int r = (((a >> 11) & 31) * it + ((b >> 11) & 31) * t) >> 8;
-  const int g = (((a >> 5) & 63) * it + ((b >> 5) & 63) * t) >> 8;
-  const int bl = ((a & 31) * it + (b & 31) * t) >> 8;
-  return (uint16_t)((r << 11) | (g << 5) | bl);
-}
+// 马在“已连接”那张里的位置（233 尺度），溶解时这块先化。
+// 跟着 ON_CROP 走：改取景框就要重新标这个椭圆，否则光点会闪在空地上。
+#define H_HORSE_CX  52
+#define H_HORSE_CY  95
+#define H_HORSE_RX  62
+#define H_HORSE_RY  72
+#define H_HORSE_R2 ((H_HORSE_RX * H_HORSE_RY) * (H_HORSE_RX * H_HORSE_RY))
 
 // ================= 素材 =================
 #include "../../resources/HomeSprites.h"
@@ -47,6 +51,11 @@ static inline uint16_t hmix565(uint16_t a, uint16_t b, int t) {
 // 两张图必须同尺寸：整帧绘制按同一套 2x 坐标写两张图的像素
 static_assert(SCENE_ON_W == SCENE_OFF_W && SCENE_ON_H == SCENE_OFF_H,
               "SCENE_OFF / SCENE_ON 尺寸必须一致");
+
+// 整帧 / 溶解按源像素 2x 写画布，而 hCircleSpan 与 hPix 走的是显示坐标，
+// 两套圆内判定只有在“显示尺寸 = 源尺寸 × 2”时才等价，这里锁死。
+static_assert(LCD_WIDTH == SCENE_OFF_W * 2 && LCD_HEIGHT == SCENE_OFF_H * 2,
+              "显示尺寸必须是源图的 2 倍");
 
 // 加色叠加：光是加到画面上，不是盖掉背景；k = 0~16，越大越亮
 static inline uint16_t hadd(uint16_t p, uint16_t c, int k) {
@@ -56,13 +65,28 @@ static inline uint16_t hadd(uint16_t p, uint16_t c, int k) {
   return (uint16_t)(((r > 31 ? 31 : r) << 11) | ((g > 63 ? 63 : g) << 5) | (b > 31 ? 31 : b));
 }
 
-// 横向加色条
+// 圆屏有效区：画布是方的，圆外那圈不发光。光效与局部擦除都裁到圆内，
+// 圆外保持初始化时的黑，否则光尘飘出圆外的部分会留在已废弃的画布角落。
+// （信息浮层和页码点画在圆心附近，不经过这里。）
+static inline void hCircleSpan(int y, int &x0, int &x1) {
+  const float r = LCD_WIDTH * 0.5f;
+  const float dy = (float)y + 0.5f - r;
+  const float t = r * r - dy * dy;
+  if (y < 0 || y >= LCD_HEIGHT || t <= 0) { x0 = x1 = 0; return; }
+  const float s = sqrtf(t);
+  x0 = (int)(r - s) - 1; if (x0 < 0) x0 = 0;
+  x1 = (int)(r + s) + 1; if (x1 > LCD_WIDTH) x1 = LCD_WIDTH;
+}
+
+// 横向加色条（裁到圆内）
 static void hAddSpan(int x, int y, int w, uint16_t c, int k) {
   if (k <= 0 || w <= 0 || y < 0 || y >= LCD_HEIGHT) return;
   uint16_t *fb = gfx->getFramebuffer();
   if (!fb) return;
-  if (x < 0) { w += x; x = 0; }
-  if (x + w > LCD_WIDTH) w = LCD_WIDTH - x;
+  int cx0, cx1;
+  hCircleSpan(y, cx0, cx1);
+  if (x < cx0) { w -= cx0 - x; x = cx0; }
+  if (x + w > cx1) w = cx1 - x;
   if (w <= 0) return;
   uint16_t *row = fb + (size_t)y * LCD_WIDTH;
   for (int i = 0; i < w; i++) row[x + i] = hadd(row[x + i], c, k);
@@ -81,42 +105,106 @@ static void hAddEllipse(int cx, int cy, int rx, int ry, uint16_t c, int kMax) {
 }
 
 // ================= 画面 =================
-static float hMix = 0;                     // 0 = 未连接画面，1 = 已连接画面
+static bool  hOnScene = false;             // false = 未连接画面，true = 已连接画面
 static int   hBox[4] = {0, 0, 0, 0};       // 上一帧特效矩形（显示像素），局部擦除用
 
-// 取一个显示像素：两张源图按 hMix 混合（m 是 0~255 的量化值）
-static inline uint16_t hPix(int x, int y, int m) {
-  const uint8_t a = SCENE_OFF_BITS[(size_t)(y >> 1) * SCENE_OFF_W + (x >> 1)];
-  if (m <= 0) return SCENE_OFF_PAL[a];
-  const uint8_t b = SCENE_ON_BITS[(size_t)(y >> 1) * SCENE_ON_W + (x >> 1)];
-  if (m >= 255) return SCENE_ON_PAL[b];
-  return hmix565(SCENE_OFF_PAL[a], SCENE_ON_PAL[b], m);
+// 取一个显示像素：直接查当前那张图，1 源像素对应 2x2 显示像素
+static inline uint16_t hPix(int x, int y) {
+  const size_t o = (size_t)(y >> 1) * SCENE_OFF_W + (x >> 1);
+  return hOnScene ? SCENE_ON_PAL[SCENE_ON_BITS[o]] : SCENE_OFF_PAL[SCENE_OFF_BITS[o]];
+}
+
+// 源像素某一行在圆内的列范围（整帧与溶解共用，免得两处圆的算法各改各的）
+static inline void hSceneRow(int sy, int &x0, int &x1) {
+  const float half = SCENE_OFF_W * 0.5f;
+  const float dy = sy + 0.5f - half;
+  const float t = half * half - dy * dy;
+  if (t <= 0) { x0 = x1 = 0; return; }
+  const float s = sqrtf(t);
+  x0 = (int)(half - s) - 1; if (x0 < 0) x0 = 0;
+  x1 = (int)(half + s) + 1; if (x1 > SCENE_OFF_W) x1 = SCENE_OFF_W;
 }
 
 // 整帧：逐像素写画布，圆屏四角看不到，按行只写圆内那一段
 static void hFullScene() {
   uint16_t *fb = gfx->getFramebuffer();
   if (!fb) { gfx->fillScreen(C_BLACK); return; }
-  const int m = (int)(hMix * 255.0f + 0.5f);
-  const float half = SCENE_OFF_W * 0.5f;
-  const float r2 = half * half;
   for (int sy = 0; sy < SCENE_OFF_H; sy++) {
-    const float dy = sy + 0.5f - half;
-    const float t = r2 - dy * dy;
-    if (t <= 0) continue;
-    int x0 = (int)(half - sqrtf(t)) - 1;
-    int x1 = (int)(half + sqrtf(t)) + 1;
-    if (x0 < 0) x0 = 0;
-    if (x1 > SCENE_OFF_W) x1 = SCENE_OFF_W;
+    int x0, x1;
+    hSceneRow(sy, x0, x1);
+    if (x0 >= x1) continue;
     const uint8_t *ra = SCENE_OFF_BITS + (size_t)sy * SCENE_OFF_W;
     const uint8_t *rb = SCENE_ON_BITS + (size_t)sy * SCENE_ON_W;
     uint16_t *o0 = fb + (size_t)(sy * 2) * LCD_WIDTH + x0 * 2;
     uint16_t *o1 = o0 + LCD_WIDTH;
     for (int sx = x0; sx < x1; sx++) {
-      uint16_t c;
-      if (m <= 0) c = SCENE_OFF_PAL[ra[sx]];
-      else if (m >= 255) c = SCENE_ON_PAL[rb[sx]];
-      else c = hmix565(SCENE_OFF_PAL[ra[sx]], SCENE_ON_PAL[rb[sx]], m);
+      const uint16_t c = hOnScene ? SCENE_ON_PAL[rb[sx]] : SCENE_OFF_PAL[ra[sx]];
+      o0[0] = c; o0[1] = c; o1[0] = c; o1[1] = c;
+      o0 += 2; o1 += 2;
+    }
+  }
+}
+
+// ================= 状态切换：抖动溶解 =================
+// 逐像素按固定随机顺序换成新图。每个像素有自己的起翻时刻：两图差得越多越早翻，
+// 马那块再加一份权重，所以马先散；天空、地面两图差得小，翻得晚，翻过去也不显眼。
+// 锋面上“马上要翻”的像素点成金色，读起来就是整屏化开成光点、再重新聚成画面。
+// 不用逐像素混色：混色要算三次乘法，抖动换像素只是一次比较，像素风也更耐这种质变。
+static bool hMixFromOn = false;            // 过渡起点是哪张
+static bool hMixing = false;
+static unsigned long hMixAt = 0;
+
+// 稳定的伪随机阈值（按源像素坐标），同一像素每帧都是同一个值，才能“一个一个翻”而不是闪噪
+static inline uint32_t hNoise(int x, int y) {
+  // 先转 uint32_t 再乘：x * 73856093 在 int 里会溢出（x>29 就超），有符号溢出是未定义行为
+  uint32_t v = ((uint32_t)x * 73856093u) ^ ((uint32_t)y * 19349663u);
+  v ^= v >> 13; v *= 0x5bd1e995u; v ^= v >> 15;
+  return v;
+}
+
+static inline int hPalDiff(uint16_t a, uint16_t b) {
+  int d = (int)((a >> 11) & 31) - (int)((b >> 11) & 31); if (d < 0) d = -d;
+  int e = (int)((a >> 5) & 63) - (int)((b >> 5) & 63); if (e < 0) e = -e;
+  int f = (int)(a & 31) - (int)(b & 31); if (f < 0) f = -f;
+  return d + e + f;
+}
+
+static void hMixScene(float t) {
+  uint16_t *fb = gfx->getFramebuffer();
+  if (!fb) { gfx->fillScreen(C_BLACK); return; }
+  const int k = (int)(t * 256.0f);
+  const uint8_t *oldBits = hMixFromOn ? SCENE_ON_BITS : SCENE_OFF_BITS;
+  const uint16_t *oldPal = hMixFromOn ? SCENE_ON_PAL : SCENE_OFF_PAL;
+  const uint8_t *newBits = hOnScene ? SCENE_ON_BITS : SCENE_OFF_BITS;
+  const uint16_t *newPal = hOnScene ? SCENE_ON_PAL : SCENE_OFF_PAL;
+  for (int sy = 0; sy < SCENE_OFF_H; sy++) {
+    int x0, x1;
+    hSceneRow(sy, x0, x1);
+    if (x0 >= x1) continue;
+    const uint8_t *ra = oldBits + (size_t)sy * SCENE_OFF_W;
+    const uint8_t *rb = newBits + (size_t)sy * SCENE_OFF_W;
+    uint16_t *o0 = fb + (size_t)(sy * 2) * LCD_WIDTH + x0 * 2;
+    uint16_t *o1 = o0 + LCD_WIDTH;
+    for (int sx = x0; sx < x1; sx++) {
+      const uint16_t ca = oldPal[ra[sx]];
+      const uint16_t cb = newPal[rb[sx]];
+      // 翻转优先级：两图差得越多越先翻，马那一块再加一份权重
+      const int dx = (sx - H_HORSE_CX) * H_HORSE_RY;
+      const int dy = (sy - H_HORSE_CY) * H_HORSE_RX;
+      const int q2 = dx * dx + dy * dy;
+      int wgt = hPalDiff(ca, cb) + (q2 < H_HORSE_R2 ? (28 * (H_HORSE_R2 - q2)) / H_HORSE_R2 : 0);
+      if (wgt > MIX_WMAX) wgt = MIX_WMAX;
+      // 每个像素有自己的起翻时刻：权重越高越早。用“时刻”而不是“每帧重算的阈值”，
+      // 才能保证 t=1（k=256）压过所有 start<=255，全部翻完、不留残影。
+      const int n = (int)(hNoise(sx, sy) & 255);
+      const int speed = (MIX_WMIN + wgt) * 256 / (MIX_WMIN + MIX_WMAX);   // 26~256
+      int start = 255 - speed * (255 - n) / 255;
+      if (start < 0) start = 0;
+      uint16_t c = (k > start) ? cb : ca;
+      // 锋面上“还没翻、马上要翻”的像素点成金色。用 start>=k 而不是两端对称，
+      // t=0 和 t=1 时锋面为空，两端都是干净的目标图。
+      if (k > 0 && start >= k && start - k < 10 && wgt > 18)
+        c = ((sx ^ sy) & 1) ? H_HOLY : H_AMBER;
       o0[0] = c; o0[1] = c; o1[0] = c; o1[1] = c;
       o0 += 2; o1 += 2;
     }
@@ -132,19 +220,23 @@ static void hRestore(int x0, int y0, int x1, int y1) {
   if (x1 > LCD_WIDTH) x1 = LCD_WIDTH;
   if (y1 > LCD_HEIGHT) y1 = LCD_HEIGHT;
   if (x0 >= x1 || y0 >= y1) return;
-  const int m = (int)(hMix * 255.0f + 0.5f);
   for (int y = y0; y < y1; y++) {
+    int cx0, cx1;
+    hCircleSpan(y, cx0, cx1);                       // 包围盒角落可能出圆，逐行再裁一次
+    if (x0 > cx0) cx0 = x0;
+    if (x1 < cx1) cx1 = x1;
+    if (cx0 >= cx1) continue;
     uint16_t *row = fb + (size_t)y * LCD_WIDTH;
-    for (int x = x0; x < x1; x++) row[x] = hPix(x, y, m);
+    for (int x = cx0; x < cx1; x++) row[x] = hPix(x, y);
   }
 }
 
 // 赐福火位置：两张图的火各自在不同位置，取当前这张的坐标再放大 2 倍
 static inline int hBeamX() {
-  return (hMix >= 0.5f ? HOME_BEAM_ON_X : HOME_BEAM_OFF_X) * 2;
+  return (hOnScene ? HOME_BEAM_ON_X : HOME_BEAM_OFF_X) * 2;
 }
 static inline int hBeamY() {
-  return (hMix >= 0.5f ? HOME_BEAM_ON_Y : HOME_BEAM_OFF_Y) * 2;
+  return (hOnScene ? HOME_BEAM_ON_Y : HOME_BEAM_OFF_Y) * 2;
 }
 
 // 光尘 + 赐福火光：只动这两层，画完把包围盒交给局部重绘用
@@ -230,9 +322,14 @@ static void hDrawInfo() {
   printCentered("TAP TO CLOSE", CX, 350, 1, 0x4208);
 }
 
-// 整帧：画面（按 hMix 混合）→ 赐福火光与光尘 → 浮层
+// 整帧：画面 → 赐福火光与光尘 → 浮层
 static void hDrawFull(unsigned long now) {
-  hFullScene();
+  if (hMixing) {
+    const float t = (now - hMixAt) / (float)HOME_MIX_MS;
+    hMixScene(t >= 1.0f ? 1.0f : t);
+  } else {
+    hFullScene();
+  }
   hEffects(now, hBoost);
   if (hInfoOn) hDrawInfo();
 }
@@ -247,18 +344,28 @@ void drawWaiting(int st) {
   hFullNext = true;
   const bool changed = hSt >= 0 && hSt != st;
   hSt = st;
-  hMix = (st == WAIT_READY) ? 1.0f : 0.0f;           // 换画面立即生效，不等动画
+  const bool target = (st == WAIT_READY);
+  if (changed && hOnScene != target) {               // 换状态：从当前这张溶解过去
+    hMixFromOn = hOnScene;
+    hOnScene = target;                               // 锚点与 hPix 立即按新图算
+    hMixing = true;
+    hMixAt = millis();
+  } else if (changed) {                              // 来回切回原来那张：中断过渡
+    hMixing = false;
+  } else if (!hMixing) {
+    hOnScene = target;
+  }
   if (changed) {                                     // 换状态：赐福处闪一下
     hBoost = 1.6f;
     hBoostAt = millis();
-  } else {
+  } else if (!hMixing) {
     hBoost = 1.0f;
   }
   hInfoOn = false;
   hFrameAt = millis();
 #if DEBUG_SERIAL
-  Serial.printf("HOME st=%d changed=%d mix=%.2f page=%d on=%d sliding=%d\n",
-                st, (int)changed, hMix, page, (int)onWaitScreen, (int)sliding);
+  Serial.printf("HOME st=%d changed=%d scene=%d mix=%d page=%d on=%d sliding=%d\n",
+                st, (int)changed, (int)hOnScene, (int)hMixing, page, (int)onWaitScreen, (int)sliding);
 #endif
   hDrawFull(hFrameAt);
   hFullNext = false;                                 // 这一帧已经是整帧，别让下一帧再整屏重画
@@ -311,8 +418,13 @@ void animateCat() {
     return;
   }
   if (hInfoOn && !catForce) return;                  // 浮层开着：冻住背景动画，只等分钟变
-  const bool full = hFullNext;
-  const int gap = hBoost > 1.0f ? 60 : HOME_FRAME_MS;   // 闪光期间 16fps，衰减看着才连续
+  if (hMixing && now - hMixAt >= HOME_MIX_MS) {      // 溶解结束：立刻整帧刷一次
+    hMixing = false;
+    hFullNext = true;
+    catForce = true;                                 // 别让下面的 gap 把收尾帧推迟
+  }
+  const bool full = hFullNext || hMixing;
+  const int gap = hMixing ? 33 : (hBoost > 1.0f ? 60 : HOME_FRAME_MS);
   if (!catForce && now - hFrameAt < gap) return;
   catForce = false;
   hFrameAt = now;
