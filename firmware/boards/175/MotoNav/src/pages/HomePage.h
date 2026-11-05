@@ -6,7 +6,11 @@
 // 共用同一张调色板（scripts/home_sprites.py 会校验，失配就报错），所以：
 //   · 状态切换只重绘人和马那一小块，天空、峡谷、王城、黄金树、赐福火一动不动；
 //   · 人靠纵向扫描从脚往上“立”起来，马靠蓝色粒子从地面聚拢成形；
-//   · 赐福光随姿态变：坐着时更亮更高（有交互），站着时暗一点矮一点（无交互）。
+//   · 赐福光随姿态变：坐火（坐着）亮而盛，未坐火（站着）暗一档、火苗小一号、粒子稀少。
+// v2.3 赐福分两档，读的是《黑暗之魂/艾尔登法环》那套规则：没坐下休息时赐福本身也发金光，
+// 只是弱——所以站着不是"灭掉"，是火苗小一圈、亮度档 16→9、闪烁粒子 10→5、光尘 20→10。
+// 素材里那根金色光柱是画进图里的（两态共用背景，见 v2.2），代码改不了它的高度；
+// 想让它变矮只能重做母版图，纯像素修补会在山体上留下灰块/黑烟。
 // 绘制仍分整帧（进度推进 / 进页面 / 浮层）和局部（静置的光尘与火光）两种。
 // 推屏始终整屏一次；局部只擦上一帧特效那一小块再重画，静置时每帧只有几百个像素级操作。
 // 画面走同步推屏（单缓冲），局部更新才不会画到屏幕没在显示的那块缓冲上。
@@ -30,10 +34,12 @@ HomeClock homeClock;
 #define H_CARD_ED 0x39E7   // 浮层描边
 
 // ================= 构图 =================
-#define H_DUST_N     26        // 光尘数量
-#define H_DUST_SPAN  36        // 特效包围盒半宽（光尘实际散布 32，留 4 像素余量）
-#define H_DUST_TOP_SIT   150   // 坐着时光尘上升行程（显示像素）
-#define H_DUST_TOP_STAND 108   // 站着时行程短一截：赐福没被交互
+#define H_DUST_N     20        // 光尘数量（未坐火只用前一半）
+#define H_DUST_TOP_SIT   96    // 坐着时光尘上升行程（v2.3 从 150 压到 96：光别升那么高）
+#define H_DUST_TOP_STAND 68    // 站着时行程更短：赐福没被交互
+#define H_SPK_N      10        // 赐福闪烁粒子（未坐火只亮前一半）
+#define H_FX_SPAN    44        // 特效包围盒半宽（粒子最远 35，留余量）
+#define H_FX_TOP     128       // 特效最高处（相对火心）
 #define H_MAN_UNTIL  0.55f     // 进度到 55% 时人已经站直，剩下的都留给马
 #define H_HRS_FROM   0.25f     // 马从 25% 开始聚合，到 100% 成完
 #define H_MAN_BAND   13        // 起身扫描带的半宽（源像素）：带内按噪声逐个翻，不是一刀切
@@ -260,25 +266,55 @@ static void hRestore(int x0, int y0, int x1, int y1) {
   }
 }
 
+// 赐福粒子（v2.3）：围着火苗明灭的小光点，锚点固定、相位由下标派生，不存粒子状态。
+// 前 5 颗贴着火苗，未坐火也亮着——赐福不休息时同样发光；后 5 颗更远，只在坐火时出现。
+static const int8_t hSpkPts[H_SPK_N][2] = {
+  {22, -32}, {-20, -40}, {34, -18}, {-28, -24}, {8, -58},
+  {40, -56}, {-38, -62}, {30, -76}, {48, -38}, {-16, -88},
+};
+
+static void hBlessSparks(unsigned long now, float boost, float manT) {
+  const int bx = HOME_BEAM_X * 2, by = HOME_BEAM_Y * 2;
+  const bool rest = manT < 0.5f;                       // 坐火：多而亮
+  const int n = rest ? H_SPK_N : H_SPK_N / 2;
+  const int kMax = rest ? 15 : 9;
+  for (int i = 0; i < n; i++) {
+    const int x = bx + hSpkPts[i][0] + (int)(sinf(now * 0.00052f + i * 2.3f) * 3.0f);
+    const int y = by + hSpkPts[i][1] + (int)(sinf(now * 0.00091f + i * 1.7f) * 4.0f);
+    // 正弦负半周直接熄灭：读起来是"闪"，比整体明暗呼吸更灵
+    const float tw = sinf(now * (0.0045f + (i & 3) * 0.0012f) + i * 2.399f);
+    if (tw <= 0.2f) continue;
+    const float q = (tw - 0.2f) * 1.25f;
+    const int k = (int)(kMax * q * q * boost + 0.5f);
+    if (k <= 0) continue;
+    const uint16_t c = q > 0.85f ? H_SPECTRAL_HI : ((i & 3) ? H_HOLY : H_DUST);
+    const int r = q > 0.6f ? 2 : 1;
+    hAddEllipse(x, y, r, r, c, k);
+  }
+}
+
 // 光尘 + 赐福火光：只动这两层，画完把包围盒交给局部重绘用。
-// manT = 0 坐着（赐福被交互：更亮、更高），1 站着（暗一点、矮一点）。
+// manT = 0 坐着（坐火：更亮、更高、火苗更大），1 站着（未坐火：暗一档、矮一截、火苗小一号）。
 static void hEffects(unsigned long now, float boost, float manT) {
   const int bx = HOME_BEAM_X * 2, by = HOME_BEAM_Y * 2;
-  const int lit = (int)(16.0f * (1.0f - 0.28f * manT) + 0.5f);     // 亮度档位 16 → 12
+  const int lit = (int)(16.0f * (1.0f - 0.44f * manT) + 0.5f);     // 亮度档位 16 → 9（v2.3 原来只到 12）
   const int lift = (int)(6.0f * (1.0f - 0.55f * manT) + 0.5f);     // 光心离地高度 6 → 2.7
   const int dustTop = (int)(H_DUST_TOP_SIT + (H_DUST_TOP_STAND - H_DUST_TOP_SIT) * manT);
+  const int fw = (int)(34.0f * (1.0f - 0.41f * manT) + 0.5f);      // 光晕 34×12 → 20×7（v2.3）
+  const int fh = (int)(12.0f * (1.0f - 0.42f * manT) + 0.5f);
   // 火光呼吸
   const float breath = 0.75f + 0.25f * sinf(now * 0.0011f);
   const int k = (int)((1.5f + 1.5f * breath) * boost * lit / 16.0f + 0.5f);
-  hAddEllipse(bx, by - lift, 26, 9, H_AMBER, k);
-  hAddEllipse(bx, by - lift - 6, 12, 5, H_HOLY, k);
+  hAddEllipse(bx, by - lift, fw, fh, H_AMBER, k);
+  hAddEllipse(bx, by - lift - 6, (fw * 15 + 17) / 34, (fh * 7 + 6) / 12, H_HOLY, k);
   if (boost > 1.05f) {                                    // 切换闪光（半径必须留在包围盒内）
     const int r = 20 + (int)(12 * (boost - 1.0f) / 0.6f);
     hAddEllipse(bx, by, r, r / 4, H_SPECTRAL_HI, (int)((boost - 1.0f) * 10));
   }
   // 光尘：加色点，压在亮天空上也只会更亮
-  for (int i = 0; i < H_DUST_N; i++) {
-    const float ph = fmodf(i / (float)H_DUST_N + now * 0.00009f, 1.0f);
+  const int dustN = manT > 0.5f ? H_DUST_N / 2 : H_DUST_N;
+  for (int i = 0; i < dustN; i++) {
+    const float ph = fmodf(i / (float)dustN + now * 0.00009f, 1.0f);
     const int y = by - (int)(ph * dustTop);
     const float spread = 6 + ph * 26;
     const int x = bx + (int)(sinf(i * 2.7f + ph * 7.5f + now * 0.0011f) * spread);
@@ -288,9 +324,10 @@ static void hEffects(unsigned long now, float boost, float manT) {
     const int r = ph < 0.3f ? 2 : 1;
     hAddEllipse(x, y, r, r, (i % 4) ? H_DUST : H_HOLY, dk);
   }
-  hBox[0] = bx - H_DUST_SPAN - 4;
-  hBox[1] = by - dustTop - 4;
-  hBox[2] = bx + H_DUST_SPAN + 4;
+  hBlessSparks(now, boost, manT);
+  hBox[0] = bx - H_FX_SPAN - 4;
+  hBox[1] = by - H_FX_TOP - 4;
+  hBox[2] = bx + H_FX_SPAN + 4;
   hBox[3] = by + 12;
 }
 

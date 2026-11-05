@@ -76,6 +76,18 @@ HRS = (_num("HOME_HRS_X0"), _num("HOME_HRS_X1"), _num("HOME_HRS_Y0"), _num("HOME
 DUST_TOP_SIT = _hp("H_DUST_TOP_SIT")
 DUST_TOP_STAND = _hp("H_DUST_TOP_STAND")
 DUST_N = _hp("H_DUST_N")
+SPK_N = _hp("H_SPK_N")
+
+
+def _spk():
+    """从 HomePage.h 里读粒子锚点表，免得预览和固件各写一份。"""
+    body = _HP[_HP.index("hSpkPts["):]
+    body = body[body.index("{") + 1: body.index("};")]
+    nums = [int(v) for v in re.findall(r"-?\d+", body)]
+    return [(nums[i], nums[i + 1]) for i in range(0, len(nums), 2)]
+
+
+SPK_PTS = _spk()
 
 
 def hnoise(x, y):
@@ -214,21 +226,45 @@ def sparks(s, hrs_t):
         s.add_ellipse(x * 2, y * 2, r, r, c, kmax)
 
 
-def ground(s, now, boost, man_t):
-    """火光 + 光尘：亮度、光心高度、光尘行程都随姿态变。"""
+def sparks(s, now, boost, man_t):
+    """赐福闪烁粒子：与固件 hBlessSparks 同一套参数（坐火多而亮，未坐火少而暗）。"""
     bx, by = BEAM[0] * 2, BEAM[1] * 2
-    lit = int(16.0 * (1.0 - 0.28 * man_t) + 0.5)
+    rest = man_t < 0.5
+    n = SPK_N if rest else SPK_N // 2
+    kmax = 13 if rest else 8
+    for i in range(n):
+        x = bx + SPK_PTS[i][0] + int(math.sin(now * 0.00052 + i * 2.3) * 3.0)
+        y = by + SPK_PTS[i][1] + int(math.sin(now * 0.00091 + i * 1.7) * 4.0)
+        tw = math.sin(now * (0.0045 + (i & 3) * 0.0012) + i * 2.399)
+        if tw <= 0.2:
+            continue
+        q = (tw - 0.2) * 1.25
+        k = int(kmax * q * q * boost + 0.5)
+        if k <= 0:
+            continue
+        c = H_SPECTRAL_HI if q > 0.9 else (H_HOLY if (i & 3) else H_DUST)
+        r = 2 if q > 0.7 else 1
+        s.add_ellipse(x, y, r, r, c, k)
+
+
+def ground(s, now, boost, man_t):
+    """火光 + 光尘 + 闪烁粒子：亮度、火苗大小、光尘行程、粒子多少都随姿态变。"""
+    bx, by = BEAM[0] * 2, BEAM[1] * 2
+    lit = int(16.0 * (1.0 - 0.44 * man_t) + 0.5)
     lift = int(6.0 * (1.0 - 0.55 * man_t) + 0.5)
     dust_top = int(DUST_TOP_SIT + (DUST_TOP_STAND - DUST_TOP_SIT) * man_t)
+    fw = int(34.0 * (1.0 - 0.41 * man_t) + 0.5)
+    fh = int(12.0 * (1.0 - 0.42 * man_t) + 0.5)
     breath = 0.75 + 0.25 * math.sin(now * 0.0011)
     k = int((1.5 + 1.5 * breath) * boost * lit / 16.0 + 0.5)
-    s.add_ellipse(bx, by - lift, 26, 9, H_AMBER, k)
-    s.add_ellipse(bx, by - lift - 6, 12, 5, H_HOLY, k)
+    s.add_ellipse(bx, by - lift, fw, fh, H_AMBER, k)
+    s.add_ellipse(bx, by - lift - 6, (fw * 15 + 17) // 34, (fh * 7 + 6) // 12, H_HOLY, k)
     if boost > 1.05:
         r = 20 + int(12 * (boost - 1.0) / 0.6)
         s.add_ellipse(bx, by, r, r // 4, H_SPECTRAL_HI, int((boost - 1.0) * 10))
-    for i in range(DUST_N):
-        ph = math.fmod(i / DUST_N + now * 0.00009, 1.0)
+    dust_n = DUST_N // 2 if man_t > 0.5 else DUST_N
+    for i in range(dust_n):
+        ph = math.fmod(i / float(dust_n) + now * 0.00009, 1.0)
         y = by - int(ph * dust_top)
         spread = 6 + ph * 26
         x = bx + int(math.sin(i * 2.7 + ph * 7.5 + now * 0.0011) * spread)
@@ -238,6 +274,7 @@ def ground(s, now, boost, man_t):
             continue
         r = 2 if ph < 0.3 else 1
         s.add_ellipse(x, y, r, r, H_DUST if i % 4 else H_HOLY, dk)
+    sparks(s, now, boost, man_t)
 
 
 def centered(s, text, y, size, color):
@@ -255,7 +292,7 @@ def info_card(s):
     centered(s, "LINKED", 266, 2, C_GREEN)
     centered(s, "MotoNav-3F2A", 290, 2, C_GREY)
     centered(s, "BAT 87%", 312, 2, C_GREY)
-    centered(s, "v2.2.0  40MHz", 336, 1, C_GREY)
+    centered(s, "v2.3.0  40MHz", 336, 1, C_GREY)
     centered(s, "TAP TO CLOSE", 350, 1, 0x4208)
 
 
