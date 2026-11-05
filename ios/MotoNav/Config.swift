@@ -17,7 +17,7 @@ import Foundation
 //             · 路口实际转弯角度、车道、前方红绿灯距离、路况颜色、GPS 信号弱、拥堵重算提示
 //             · 测速牌按车速提前提醒（500~1000 米），按位置跟踪到经过为止
 //             · 更快路线：圆屏提示能省几分钟，手机导航画面上一键切换
-//             · Key 设置：高德 key 可以在 App 里填（存在手机上），不用改代码
+//             · 密钥设置：高德 key 可以在 App 里填（存在手机上），不用改代码
 //   iOS v0.2.1 省高德额度：搜索改成按“搜索”才查（原来拼音输入时每个字母都查一次，点选结果后还会再查一次）；
 //             同样的关键词查过就直接用上次的结果。
 //   iOS v0.3  和安卓版对齐的第二步：
@@ -49,4 +49,4 @@ import Foundation
 /// 版本串取工程的 MARKETING_VERSION，不再手写：手写会跟安装包对不上。
 let APP_VERSION: String = "iOS v" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0")
 
-// 高德 key 不再写在代码里（iOS v0.7 起）：用户在 App 的「Key 设置」里填，存在手机上，见 Settings.swift
+// 高德 key 不再写在代码里（iOS v0.7 起）：用户在 App 的「我的 → 通用 → 密钥设置」里填，存在手机上，见 Settings.swift

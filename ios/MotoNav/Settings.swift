@@ -140,7 +140,7 @@ final class Settings: ObservableObject {
     }
     @Published var voiceMuted: Bool { didSet { ud.set(voiceMuted, forKey: "nav_muted") } }
 
-    // Key 设置：用户在 App 里填自己的 key，只存在这台手机上。iOS v0.7 起代码里不再内置任何 key，没填时打开 App 会提醒
+    // 密钥设置：用户在 App 里填自己的 key，只存在这台手机上。iOS v0.7 起代码里不再内置任何 key，没填时打开 App 会提醒
     /// 高德 key（iOS 平台，绑定这个 App 的 Bundle ID）：填好后 applyAmapKey() 马上交给高德
     @Published var amapKey: String { didSet { ud.set(amapKey.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "key_amap") } }
     var amapKeyInUse: String { amapKey.trimmingCharacters(in: .whitespacesAndNewlines) }

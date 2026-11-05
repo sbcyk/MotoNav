@@ -13,7 +13,7 @@ enum SettingsHubItem: String, Identifiable, CaseIterable {
     }
     var subtitle: String {
         switch self {
-        case .general: return "外观与key"
+        case .general: return "外观与密钥"
         case .voice: return "语音与播报"
         case .about: return "版本与使用说明"
         }
@@ -28,11 +28,16 @@ enum SettingsHubItem: String, Identifiable, CaseIterable {
 }
 
 struct SettingsHubList<Destination: View>: View {
+    /// 外部可以直接把某一项推开（缺高德密钥时从导航页跳到「通用」）。
+    @Binding var activeItem: SettingsHubItem?
     @ViewBuilder var destination: (SettingsHubItem) -> Destination
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(SettingsHubItem.allCases.enumerated()), id: \.element.id) { idx, item in
-                NavigationLink(destination: destination(item)) {
+                NavigationLink(destination: destination(item),
+                               tag: item,
+                               selection: Binding(get: { activeItem },
+                                                  set: { activeItem = $0 })) {
                     HStack(spacing: 12) {
                         Image(systemName: item.icon)
                             .font(.system(size: 17, weight: .semibold))

@@ -111,7 +111,7 @@ final class SearchService: NSObject, ObservableObject {
             status = "搜索失败（\(code)）：高德 key 和这个 App 对不上。去高德开放平台控制台，把这个 key 的服务平台设为「iOS 平台」、" +
                 "安全码（Bundle ID）改成 \(bid)，保存后等一两分钟再搜"
         case 1002, 1013:
-            status = "搜索失败（\(code)）：高德 key 不对或已经被删除，到「Key 设置」重新填一个"
+            status = "搜索失败（\(code)）：高德 key 不对或已经被删除，到「我的 → 通用 → 密钥设置」重新填一个"
         case 1004, 1010:
             status = "搜索失败（\(code)）：这个高德 key 今天的搜索次数用完了，明天再试或换一个 key"
         case 1003, 1012:

@@ -202,7 +202,7 @@ struct IndependentPlannerView:View {
                     }.padding(14).background(RoundedRectangle(cornerRadius:14).fill(ContentView.card))
                 }
             }
-            PillButton(title:"开始导航",color:ContentView.pink,enabled:!model.busy){begin(route,false)}
+            PillButton(title:"开始导！",color:ContentView.pink,enabled:!model.busy){begin(route,false)}
             DisclosureGroup("模拟与高级选项") {
                 VStack(alignment:.leading,spacing:12){
                     Picker("模拟速度",selection:$simulationSpeed){ForEach(NavigationSpeed.values,id:\.self){Text("\($0) km/h").tag($0)}}

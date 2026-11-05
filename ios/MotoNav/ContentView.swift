@@ -4,7 +4,7 @@ import UIKit
 
 /// 版本：跟随 App 版本（见 Config.swift）
 ///
-/// 主界面：圆屏连接状态、搜索目的地 / 导入高德分享路线、选路线、开始导航、巡航、圆屏设置、Key 设置
+/// 主界面：圆屏连接状态、搜索目的地 / 导入高德分享路线、选路线、开始导航、巡航、圆屏设置、密钥设置
 /// 0.16.0 UI alignment: four tabs, semantic colours, device card and grouped settings.
 struct ContentView: View {
     @ObservedObject var ble = BleLink.shared
@@ -12,7 +12,6 @@ struct ContentView: View {
     @ObservedObject var independent = WebMotorSession.shared
     @ObservedObject var search = SearchService.shared
     @ObservedObject var settings = Settings.shared
-    @ObservedObject var weather = Weather.shared
     @ObservedObject var map = MapFeeder.shared
     @ObservedObject var history = History.shared
     @ObservedObject var favorites = Favorites.shared
@@ -35,8 +34,9 @@ struct ContentView: View {
     @AppStorage("voice_id") private var voiceID = ""
 
     @State private var query = ""
+    @State private var naviTab = 0                       // 导航页卡片：0 导航模式，1 巡航模式
     @State private var showNavi = false
-    @State private var showKeys = false                 // iOS v0.7 填写地图 Key 页面
+    @State private var settingsPush: SettingsHubItem?   // 缺密钥时直接把「通用」推开，不再弹填写页
     private static var keyPrompted = false              // 这次打开 App 已经提醒过填 key 了
     @State private var shareBusy = false
     @State private var shareStatus = ""
@@ -77,7 +77,6 @@ struct ContentView: View {
             Button("取消",role:.cancel){}
         } message: {Text("这台手机保留配对；其他手机以后要重新配对才能连上导航屏。")}
         .fullScreenCover(isPresented: $showNavi) { NaviScreen() }
-        .sheet(isPresented: $showKeys) { KeySetupView() }
         .sheet(isPresented:$showShareVerification){
             ShareVerificationView(page:AmapShare.findUrl(pendingShare).flatMap{URL(string:$0)}){
                 let text=pendingShare
@@ -105,10 +104,10 @@ struct ContentView: View {
             }                                    // iOS v0.7 打开 App 时，高德或高德 key 没填就提醒一次
             if !ContentView.keyPrompted && settings.keysMissing {
                 ContentView.keyPrompted = true
-                showKeys = true
+                openKeySettings()
             }
         }
-        .onOpenURL { url in                            // iOS v0.4 高德里“分享到 MotoNav”：motonav://share?t=分享的文字
+        .onOpenURL { url in                            // iOS v0.4 高德里“分享到导一导”：motonav://share?t=分享的文字
             guard url.scheme == "motonav",
                   let t = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "t" })?.value
             else { return }
@@ -159,8 +158,7 @@ struct ContentView: View {
                     HStack(alignment: .top, spacing: 16) {
                         VStack(alignment: .leading, spacing: 16) {
                             header
-                            destCard
-                            cruiseCard
+                            naviModeCard
                         }
                         VStack(alignment: .leading, spacing: 16) {
                             favoritesCard
@@ -172,8 +170,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         if page == 0 {
                             header
-                            destCard
-                            cruiseCard
+                            naviModeCard
                             favoritesCard
                             historyCard
                         } else if page == 1 {
@@ -287,13 +284,14 @@ struct ContentView: View {
     private var settingsTabContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             sectionTitle("我的", subtitle: "通用 · 导航语音 · 关于")
-            SettingsHubList { item in
+            SettingsHubList(activeItem: $settingsPush) { item in
                 secondaryPage(title: item.title) {
                     switch item {
                     case .general:
+                        // 密钥缺了搜索和导航都用不了，放在最前；从导航页跳过来落地就能填
+                        keyCard
                         appearanceCard
                         layoutCard
-                        keyCard
                     case .voice:
                         voiceCard
 
@@ -357,7 +355,7 @@ struct ContentView: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("MotoNav")
+                Text("准备开导")
                     .font(.system(size: 34, weight: .heavy))
                     .foregroundColor(AppTheme.text)
                 Text("摩托车路线 · 圆屏导航")
@@ -480,23 +478,32 @@ struct ContentView: View {
         }
     }
 
-    // MARK: 摩托目的地
-    private var destCard: some View {
+    // MARK: 导航与巡航
+    /// 导航页的主卡：上面切「导航模式 / 巡航模式」，下面各一套内容，不再并排放两张卡。
+    private var naviModeCard: some View {
         CardView {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("去哪儿")
-                        .font(.title3.bold())
-                        .foregroundColor(AppTheme.text)
-                    Text("选择地点后进入摩托车路线规划")
-                        .font(.footnote)
-                        .foregroundColor(AppTheme.sub)
-                }
-                Spacer()
+            Picker("导航或巡航", selection: $naviTab) {
+                Text("导航模式").tag(0)
+                Text("巡航模式").tag(1)
+            }
+            .pickerStyle(.segmented)
+            if naviTab == 0 { naviModeBody } else { cruiseModeBody }
+        }
+        // 巡航一开始就亮出那一页：「结束巡航」以前是常驻按钮，别让它藏进 tab 里
+        .onChange(of: navi.cruising) { now in if now { naviTab = 1 } }
+    }
+
+    /// 卡里的「导航模式」：选目的地、导入高德分享路线、看搜索结果。
+    private var naviModeBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text("设好目的地，选一条路线再出发")
+                    .font(.caption).foregroundColor(AppTheme.sub)
+                Spacer(minLength: 4)
                 Image(systemName: "motorcycle")
-                    .font(.system(size: 24, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundColor(AppTheme.accent)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 28, height: 28)
                     .background(Circle().fill(AppTheme.accentSoft))
                     .accessibilityHidden(true)
             }
@@ -533,7 +540,7 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
             .disabled(shareBusy)
-            Text("在高德规划摩托车路线后，分享到 MotoNav，或复制链接后点这里。")
+            Text("在高德规划摩托车路线后，分享到导一导，或复制链接后点这里。")
                 .font(.footnote)
                 .foregroundColor(AppTheme.sub)
 
@@ -625,7 +632,7 @@ struct ContentView: View {
         importShare(t)
     }
 
-    /// 导入高德分享的路线（剪贴板粘贴，或者从高德“分享到 MotoNav”过来）
+    /// 导入高德分享的路线（剪贴板粘贴，或者从高德“分享到导一导”过来）
     private func importShare(_ t: String) {
         guard AmapShare.findUrl(t) != nil else { shareStatus = "分享的内容里没有高德链接"; return }
         if navi.navigating || WebMotorSession.shared.running { shareStatus = "正在导航：先退出导航，再导入分享的路线"; return }
@@ -661,15 +668,18 @@ struct ContentView: View {
     }
 
     // MARK: 巡航
-    private var cruiseCard: some View {
-        CardView {
+    /// 卡里的「巡航模式」：不设目的地也能看地图和道路提醒。
+    private var cruiseModeBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("巡航模式").foregroundColor(AppTheme.text).bold()
-                Spacer()
-                if navi.cruising { Text("进行中 · \(navi.uiSpeed) km/h").font(.caption).foregroundColor(ContentView.cyan) }
+                Text("不设目的地，也能查看地图和道路提醒")
+                    .font(.caption).foregroundColor(ContentView.sub)
+                Spacer(minLength: 4)
+                if navi.cruising {
+                    Text("进行中 · \(navi.uiSpeed) km/h")
+                        .font(.caption.weight(.semibold)).foregroundColor(AppTheme.accent)
+                }
             }
-            Text("不设目的地，也能查看地图和道路提醒")
-                .font(.caption).foregroundColor(ContentView.sub)
             PillButton(title: navi.cruising ? "结束巡航" : "开始巡航", color: navi.cruising ? Color.gray : ContentView.cyan.opacity(0.8),
                        enabled: !navi.navigating && !WebMotorSession.shared.running) {
                 cruiseNote = ""
@@ -829,22 +839,21 @@ struct ContentView: View {
 
     private static let zhSpeechVoices=AVSpeechSynthesisVoice.speechVoices().filter{$0.language.hasPrefix("zh")}
 
-    // MARK: Key 设置
-    private var keyCard: some View {
-        CardView {
-            Text("Key 设置").foregroundColor(AppTheme.text).bold()
-            Text("高德 Key：\(Settings.mask(settings.amapKeyInUse))（搜索、导航、巡航用）")
-                .font(.footnote).foregroundColor(settings.amapKeyInUse.isEmpty ? Color.orange : ContentView.sub)
-            Text("和风天气：\(weather.host.isEmpty || weather.key.isEmpty ? "未配置（可选）" : "已配置")")
-                .font(.footnote).foregroundColor(ContentView.sub)
-            Button(settings.keysMissing ? "去填写" : "修改") { showKeys = true }
-                .foregroundColor(ContentView.cyan)
-        }
+    // MARK: 密钥设置（卡片内直接维护，不再弹填写页）
+    private var keyCard: some View { KeySettingsCard() }
+
+    /// 没填高德密钥：切到「我的」并把「通用」推开，不再弹填写页。
+    /// 密钥卡片在缺 Key 时自己描橙边，落地就能看见要填哪里。
+    private func openKeySettings() {
+        hideKeyboard()
+        page = 3
+        // 先让「我的」这一页上到层级里，NavigationLink 才存在；同一帧推会被丢掉
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { settingsPush = .general }
     }
 
-    /// 没填高德 key：弹出填写页，返回 true（调用的地方就不往下做了）
+    /// 没填高德 key：跳到密钥设置，返回 true（调用的地方就不往下做了）
     private func needAmapKey() -> Bool {
-        if settings.amapKeyInUse.isEmpty { hideKeyboard(); showKeys = true; return true }
+        if settings.amapKeyInUse.isEmpty { openKeySettings(); return true }
         return false
     }
 
