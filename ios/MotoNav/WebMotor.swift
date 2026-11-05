@@ -443,12 +443,11 @@ struct MotorMap:UIViewRepresentable {
 }
 struct WebMotorView: View {
     @ObservedObject var guide=WebMotorSession.shared
-    var mode: IndependentMode = .motorcycle
     var initialDestination: SearchService.Place?
     var body: some View {
         Group {
             if guide.running || guide.arrived { IndependentNavigationView() }
-            else { IndependentPlannerView(mode:.motorcycle,initialDestination:initialDestination) }
+            else { IndependentPlannerView(initialDestination:initialDestination) }
         }
     }
 }

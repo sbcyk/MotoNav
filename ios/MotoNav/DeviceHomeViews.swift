@@ -22,10 +22,10 @@ struct DeviceConnectionCard<DisplayDest: View, SystemDest: View>: View {
                     }
                 }
             } else {
-                HStack(alignment: .center, spacing: 12) {
+                // iOS 15 没有 ViewThatFits，固定上下排布避免窄屏横向溢出。
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack { Spacer(minLength: 0); deviceArtwork; Spacer(minLength: 0) }
                     deviceInfo
-                    Spacer(minLength: 4)
-                    deviceArtwork
                 }
             }
             Divider().opacity(0.35)

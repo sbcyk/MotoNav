@@ -71,7 +71,6 @@ struct IndependentPlannerView:View {
     @StateObject private var model=IndependentPlanner()
     @ObservedObject private var location=LocationService.shared
     @ObservedObject var guide=WebMotorSession.shared
-    @State private var mode:IndependentMode
     @State private var pick:Int?
     @State private var login=false
     @State private var loaded=false
@@ -81,8 +80,7 @@ struct IndependentPlannerView:View {
     @State private var simulationSpeed=60
     @Environment(\.dismiss) private var dismiss
     private let initialDestination: SearchService.Place?
-    init(mode:IndependentMode = .motorcycle, initialDestination:SearchService.Place? = nil){
-        _mode=State(initialValue:.motorcycle)
+    init(initialDestination:SearchService.Place? = nil){
         self.initialDestination=initialDestination
     }
     var body:some View {
@@ -100,16 +98,23 @@ struct IndependentPlannerView:View {
                     Text("账号过期时，可在这里重新登录高德。").font(.footnote).foregroundColor(ContentView.sub)
                     Text("锁屏前等待整条路线道路底图就绪；后台继续读取缓存、定位、语音和蓝牙，未缓存区域需回前台补充。").font(.footnote).foregroundColor(ContentView.sub)
                 }.padding(16)
-            }.background(ContentView.bg).navigationTitle("\(mode.rawValue)路线")
+            }.background(ContentView.bg).navigationTitle("摩托车路线")
                 .toolbar{ToolbarItem(placement:.cancellationAction){Button("返回首页"){dismiss()}}}
         }.foregroundColor(AppTheme.text).tint(ContentView.pink)
         .sheet(isPresented:Binding(get:{pick != nil},set:{if !$0{pick=nil}})){
             RoutePointPicker(title:pick==0 ? "选择起点":"选择目的地",near:model.start){point in
+                waitingForInitialFix=false
                 if pick==0{model.start=point}else{model.end=point};model.invalidate();pick=nil
             }
         }
-        .sheet(isPresented:$waypoints){RouteWaypointEditor(points:model.vias,near:model.start){points in model.vias=points;model.invalidate()}}
-        .sheet(isPresented:$showHistory){MotorHistoryView(bicycle:false){entry in model.load(entry)}}
+        .sheet(isPresented:$waypoints){RouteWaypointEditor(points:model.vias,near:model.start){points in
+            waitingForInitialFix=false
+            model.vias=points;model.invalidate()
+        }}
+        .sheet(isPresented:$showHistory){MotorHistoryView(bicycle:false){entry in
+            waitingForInitialFix=false
+            model.load(entry)
+        }}
         .sheet(isPresented:$login){MotorLoginView(page:nil)}
         .onAppear{
             guard !loaded else{return};loaded=true
@@ -118,13 +123,28 @@ struct IndependentPlannerView:View {
                 model.invalidate()
                 model.end=MotorPoint(lat:destination.lat,lng:destination.lng,name:destination.name)
                 planInitialDestination()
-            } else if let route=guide.route,!route.request.bicycle,!guide.running{
-                model.start=route.request.start;model.end=route.request.end;model.vias=route.request.vias;model.routes=[route]
+            } else {
+                restoreSharedRoute()
             }
         }
         .onReceive(location.$location) { _ in
             if waitingForInitialFix { planInitialDestination() }
         }
+        .onChange(of: guide.route?.id) { _ in
+            // 规划页已打开时，也能接收高德新分享的路线。
+            restoreSharedRoute()
+        }
+    }
+    private func restoreSharedRoute(){
+        guard !guide.running,let route=guide.route,!route.request.bicycle else{return}
+        waitingForInitialFix=false
+        model.invalidate()
+        model.start=route.request.start
+        model.end=route.request.end
+        model.vias=route.request.vias
+        model.routes=[route]
+        model.selected=0
+        model.message=""
     }
     private func planInitialDestination(){
         guard initialDestination != nil,model.end != nil,!model.busy else{return}
@@ -160,7 +180,10 @@ struct IndependentPlannerView:View {
                 Label(model.vias.isEmpty ? "添加途经点（最多三个）":"途经："+model.vias.map{$0.name}.joined(separator:" → "),systemImage:"point.topleft.down.curvedto.point.bottomright.up")
                     .frame(maxWidth:.infinity,minHeight:44,alignment:.leading)
             }
-            PillButton(title:model.busy ? "正在规划…":"规划摩托车路线",color:ContentView.pink,enabled:!model.busy && model.end != nil){model.plan(.motorcycle)}
+            PillButton(title:model.busy ? "正在规划…":"规划摩托车路线",color:ContentView.pink,enabled:!model.busy && model.end != nil){
+                waitingForInitialFix=false
+                model.plan(.motorcycle)
+            }
         }
     }
     private func routeOptions(_ route:MotorRoute)->some View {
@@ -227,12 +250,13 @@ struct IndependentNavigationView: View {
                         Spacer()
                         VStack(alignment:.trailing){Text("剩余 \(NaviBridge.distText(guide.remaining))").bold();Text("约 \(NaviBridge.durText(guide.remainingSeconds))").font(.footnote)}
                     }
-                    HStack(spacing: 10){
-                        GlassChip(title:guide.overview ? "回到跟随" : "看全程",icon:guide.overview ? "location.fill" : "map"){guide.overview.toggle()}
-                        Spacer()
-                        GlassChip(title:settings.voiceMuted ? "取消静音" : "静音",icon:settings.voiceMuted ? "speaker.slash" : "speaker.wave.2"){settings.voiceMuted.toggle();if settings.voiceMuted{Speech.shared.stopNow()}}
-                        Spacer()
-                        GlassChip(title:"返回设置",icon:"gearshape"){dismiss()}
+                    HStack(spacing: 8){
+                        GlassChip(title:guide.overview ? "跟随" : "全览",icon:guide.overview ? "location.fill" : "map",compact:true){guide.overview.toggle()}
+                            .frame(maxWidth:.infinity)
+                        GlassChip(title:settings.voiceMuted ? "取消静音" : "静音",icon:settings.voiceMuted ? "speaker.slash" : "speaker.wave.2",compact:true){settings.voiceMuted.toggle();if settings.voiceMuted{Speech.shared.stopNow()}}
+                            .frame(maxWidth:.infinity)
+                        GlassChip(title:"设置",icon:"gearshape",compact:true){dismiss()}
+                            .frame(maxWidth:.infinity)
                     }.font(.subheadline)
                     if guide.simulation {
                         HStack{Button(guide.paused ? "继续" : "暂停"){guide.paused.toggle()};Spacer();Button("\(guide.speed) km/h"){guide.speed=NavigationSpeed.next(guide.speed)}}

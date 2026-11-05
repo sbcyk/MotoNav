@@ -55,10 +55,6 @@ struct KeySetupView: View {
                     CardView {
                         WeatherSettingsView()
                     }
-
-                    Button("以后再说") { dismiss() }
-                        .font(.subheadline).foregroundColor(ContentView.sub)
-                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .padding(16)
             }

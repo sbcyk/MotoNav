@@ -68,7 +68,7 @@ struct ContentView: View {
             }.navigationViewStyle(.stack).id(page)
         }
         .fullScreenCover(isPresented: $showWebMotor) {
-            WebMotorView(mode: .motorcycle, initialDestination: independentDestination)
+            WebMotorView(initialDestination: independentDestination)
         }
         .sheet(isPresented: $showRides) { NavigationView { RideHistoryView() } }
         .sheet(isPresented:$showScreens) { screenPicker }
@@ -405,9 +405,10 @@ struct ContentView: View {
                             Spacer(minLength: 4)
                             if let d = distanceTo(p) { Text(d).font(.caption).foregroundColor(ContentView.cyan) }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     Divider().background(ContentView.stroke)
                 }
                 GlassChip(title: "清除记录", foreground: ContentView.sub, compact: true) { history.clear() }
@@ -430,7 +431,6 @@ struct ContentView: View {
     private var connectionManagementCard:some View {
         CardView {
             Text("连接管理").font(.headline).foregroundColor(AppTheme.text)
-            Text(ble.connectionSummary).font(.subheadline).foregroundColor(Self.sub)
             HStack {
                 GlassChip(title:"换一块圆屏",icon:"arrow.triangle.2.circlepath",tint:Self.cyan){showScreens=true}
                 Spacer()
@@ -438,6 +438,8 @@ struct ContentView: View {
             }
             Text("更换圆屏时按设备名称选择，并按圆屏提示完成配对。").font(.caption).foregroundColor(Self.sub)
             Button("校准圆屏时间") {ble.syncPhoneClock(force:true);clockRequested=true}
+                .frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
                 .disabled(!ble.isReady || !ble.verified)
             if clockRequested {Text("已发送手机时间，圆屏收到后会更新。") .font(.caption).foregroundColor(Self.sub)}
         }
@@ -648,7 +650,9 @@ struct ContentView: View {
                 if navi.cruising { navi.stopCruise() }
                 else if !needAmapKey(), let err = navi.startCruise() { cruiseNote = err }
             }
-            if !cruiseNote.isEmpty { Text(cruiseNote).font(.caption).foregroundColor(Color.orange) }
+            Text("连续停车 10 分钟后自动结束。")
+                .font(.footnote).foregroundColor(ContentView.sub)
+            if !cruiseNote.isEmpty { Text(cruiseNote).font(.footnote).foregroundColor(AppTheme.orange) }
         }
     }
 
@@ -683,8 +687,6 @@ struct ContentView: View {
                 Button("授权 Apple Music 圆屏控制") { MusicBridge.shared.authorize() }
                     .foregroundColor(ContentView.cyan)
             }
-            Text("巡航连续停车 10 分钟后自动结束。")
-                .font(.caption).foregroundColor(ContentView.sub)
             Divider().opacity(0.35).padding(.vertical, 4)
             Text("屏幕方向").foregroundColor(AppTheme.text).font(.headline)
             RotationDial(degrees: $settings.rotationDeg)      // iOS v0.5.1 按住圆盘转动调角度
@@ -770,10 +772,15 @@ struct ContentView: View {
             if favorites.places.isEmpty { Text("选择目的地后点收藏").foregroundColor(Self.sub) }
             ForEach(favorites.places) { place in
                 HStack {
-                    Button(place.name) { page=0; choose(place.searchPlace) }.foregroundColor(Self.cyan)
-                    Spacer()
-                    Button("移除") { favorites.remove(place) }.foregroundColor(Self.sub)
+                    Button(place.name) { page=0; choose(place.searchPlace) }
+                        .foregroundColor(AppTheme.accent)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                    Button("移除") { favorites.remove(place) }
+                        .foregroundColor(AppTheme.sub)
+                        .frame(minWidth: 52, minHeight: 44)
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -925,25 +932,6 @@ struct CardView<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 18).fill(ContentView.card))
 
-    }
-}
-
-/// 一条路线的对比卡片：标签、时间、距离 · 红绿灯 · 收费
-struct RouteCard: View {
-    let option: NaviBridge.RouteOption
-    let selected: Bool
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(option.label).font(.caption).foregroundColor(selected ? ContentView.pink : ContentView.sub).lineLimit(1)
-            Text(NaviBridge.durText(option.timeS)).font(.headline).foregroundColor(AppTheme.text).lineLimit(1).minimumScaleFactor(0.7)
-            Text(NaviBridge.distText(option.length) + (option.lights > 0 ? " · \(option.lights)灯" : "") + (option.toll > 0 ? " · ¥\(option.toll)" : ""))
-                .font(.caption2).foregroundColor(ContentView.sub).lineLimit(1).minimumScaleFactor(0.7)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12).fill(ContentView.bg))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected ? ContentView.pink : ContentView.stroke, lineWidth: selected ? 2 : 1))
-        .contentShape(Rectangle())
     }
 }
 

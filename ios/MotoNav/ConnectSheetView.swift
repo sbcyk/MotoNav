@@ -62,7 +62,7 @@ struct ReconnectBanner: View {
     var body: some View {
         HStack(spacing: 10) {
             Circle().fill(ble.isReady ? AppTheme.green : AppTheme.accent).frame(width: 9, height: 9)
-            Text(ble.isReady ? "圆屏已连接" : coord.bannerText).font(.footnote.weight(.semibold)).foregroundColor(AppTheme.text).lineLimit(1)
+            Text(ble.isReady ? "圆屏已连接" : coord.statusText).font(.footnote.weight(.semibold)).foregroundColor(AppTheme.text).lineLimit(1)
             Spacer(minLength: 4)
             Button { coord.dismissReconnectBanner() } label: {
                 Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundColor(AppTheme.sub)

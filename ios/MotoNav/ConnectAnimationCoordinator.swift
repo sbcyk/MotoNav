@@ -5,11 +5,9 @@ import Combine
 final class ConnectAnimationCoordinator: ObservableObject {
     static let shared = ConnectAnimationCoordinator()
 
-    enum Kind { case first, manual, auto }
     enum Phase { case idle, spinning, connected, failed }
 
     @Published var isPresented = false
-    @Published var kind: Kind = .manual
     @Published var phase: Phase = .idle
     @Published var statusText = "正在连接圆屏…"
     @Published var showBattery = false
@@ -26,27 +24,14 @@ final class ConnectAnimationCoordinator: ObservableObject {
         BleLink.shared.screenName.isEmpty ? "MotoNav" : BleLink.shared.screenName
     }
 
-    var footerHint: String {
-        switch kind {
-        case .first: return "首次配对"
-        case .manual: return "手动连接"
-        case .auto: return "自动重连"
-        }
-    }
-
-    var bannerText: String {
-        if showReconnectBanner { return statusText }
-        return BleLink.shared.isReady ? "圆屏已连接" : "圆屏未连接"
-    }
+    let footerHint = "手动连接"
 
     func connectManually() {
-        kind = .manual
         presentAndConnect()
     }
 
     func connectAutomatically() {
         autoConnecting = true
-        kind = .auto
         statusText = "正在重新连接圆屏…"
         showReconnectBanner = true
         BleLink.shared.connect()

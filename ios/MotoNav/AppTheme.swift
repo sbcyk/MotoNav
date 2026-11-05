@@ -145,7 +145,7 @@ extension View {
 //
 // - Primary (prominent)：系统蓝实心 + 白字
 // - Secondary (tinted / clear)：灰底 + 主文字
-// - Destructive：透明底 + 系统红字
+// - Destructive：红色软底 + 系统红字
 // - Disabled：低对比灰
 
 /// 按钮浓淡：clear 次要 / tinted 次操作 / prominent 主 CTA / destructive 危险
@@ -218,8 +218,6 @@ struct GlassChip: View {
     var enabled = true
     var compact = false
     let action: () -> Void
-
-    private var isAccented: Bool { tint != nil || foreground != nil }
 
     private var labelColor: Color {
         if let foreground { return foreground }

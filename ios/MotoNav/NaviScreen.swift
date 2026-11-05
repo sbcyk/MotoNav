@@ -84,6 +84,7 @@ struct NaviScreen: View {
                 topOverlay
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 VStack(spacing: 10) {
+                    if navi.emulating { simulationControlRow }
                     controlRow
                     exitButton
                 }
@@ -204,18 +205,23 @@ struct NaviScreen: View {
         return String(format: "剩余 %.1f km · %d 分", Double(m) / 1000, max(1, s / 60))
     }
 
-    /// 静音、（模拟导航时）暂停 / 继续、车速
+    /// 模拟控制独立一行，避免小屏设备与普通导航按钮互相挤压。
+    private var simulationControlRow: some View {
+        HStack(spacing: 10) {
+            chip(navi.emuPaused ? "play.fill" : "pause.fill", navi.emuPaused ? "继续" : "暂停", on: navi.emuPaused) { navi.toggleEmuPause() }
+            chip("speedometer", "\(navi.emuSpeed) km/h", on: false) { navi.cycleEmuSpeed() }
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+    }
+
+    /// 静音、导航选项与返回设置。
     private var controlRow: some View {
         HStack(spacing: 10) {
             chip(settings.voiceMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
                  settings.voiceMuted ? "已静音" : "播报", on: settings.voiceMuted) {
                 settings.voiceMuted.toggle()
                 if settings.voiceMuted { Speech.shared.stopNow() }
-            }
-            if navi.emulating {
-                chip(navi.emuPaused ? "play.fill" : "pause.fill", navi.emuPaused ? "继续" : "暂停", on: navi.emuPaused) { navi.toggleEmuPause() }
-                chip("speedometer", "\(navi.emuSpeed) km/h", on: false) { navi.cycleEmuSpeed() }
-                    .fixedSize()                       // 不被同行挤压截断（实测 "60…" 截断）
             }
             Spacer()
             chip("ellipsis", "更多", on: false) { drive.showMore = true }
