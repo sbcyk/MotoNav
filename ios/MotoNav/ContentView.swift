@@ -73,10 +73,10 @@ struct ContentView: View {
         .sheet(isPresented: $showRides) { NavigationView { RideHistoryView() } }
         .sheet(isPresented:$showScreens) { screenPicker }
         .sheet(isPresented:$showMapReport){MapSampleReportView()}
-        .confirmationDialog("让圆屏忘掉其他手机？",isPresented:$confirmForgetPhones,titleVisibility:.visible) {
-            Button("忘掉其他手机",role:.destructive){ble.forgetOtherPhones()}
+        .confirmationDialog("清除其他手机的配对？",isPresented:$confirmForgetPhones,titleVisibility:.visible) {
+            Button("清除其他手机",role:.destructive){ble.forgetOtherPhones()}
             Button("取消",role:.cancel){}
-        } message: {Text("当前手机保留配对，其他手机以后需要重新配对。")}
+        } message: {Text("这台手机保留配对；其他手机以后要重新配对才能连上导航屏。")}
         .fullScreenCover(isPresented: $showNavi) { NaviScreen() }
         .sheet(isPresented: $showKeys) { KeySetupView() }
         .sheet(isPresented:$showShareVerification){
@@ -139,13 +139,13 @@ struct ContentView: View {
         NavigationView {
             List {
                 Section {
-                    Text("选择圆屏，编号可在圆屏首页查看。").font(.subheadline).foregroundColor(Self.sub)
-                    if ble.availableScreens.isEmpty {Text("正在搜索附近圆屏…")}
+                    Text("选择要连接的圆屏，圆屏上的编号就是这里的名字。").font(.subheadline).foregroundColor(Self.sub)
+                    if ble.availableScreens.isEmpty {Text("正在搜索附近的圆屏…")}
                     ForEach(ble.availableScreens){screen in
                         Button(screen.name){ble.selectScreen(screen.id);showScreens=false;connectAnim.connectAutomatically()}
                     }
                 }
-            }.navigationTitle("选择圆屏").toolbar {
+            }.navigationTitle("切换设备").toolbar {
                 ToolbarItem(placement:.cancellationAction){Button("取消"){showScreens=false}}
                 ToolbarItem(placement:.confirmationAction){Button("重新搜索"){ble.beginScreenSelection()}}
             }
@@ -187,8 +187,10 @@ struct ContentView: View {
                     }
                 }
             // 内容滚过悬浮玻璃条后方，留白 ≈ 条高 + 安全区
-            }.padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 128)
+            }.padding(.horizontal, 16).padding(.top, 16)
+                .padding(.bottom, page == 2 ? 104 : 128)     // 设备页一屏放得下，留白收窄
         }
+        .scrollBounceBehaviorIfFits()
         .frame(maxWidth: wide ? 1080 : .infinity)
         .frame(maxWidth: .infinity)
     }
@@ -266,19 +268,20 @@ struct ContentView: View {
     }
 
     private var deviceTabContent: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("圆屏")
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("设备")
                     .font(.system(size: 28, weight: .heavy, design: .rounded))
                     .foregroundColor(AppTheme.text)
-                Spacer()
+                Text("圆屏的连接、电量与屏幕设置")
+                    .font(.caption).foregroundColor(AppTheme.sub)
             }
             .padding(.top, 8)
             DeviceConnectionCard(
-                displayDestination: { secondaryPage(title: "圆屏显示") { displayCard } },
-                systemDestination: { secondaryPage(title: "圆屏设置") { settingsCard } }
+                displayDestination: { secondaryPage(title: "屏幕显示") { displayCard } },
+                systemDestination: { secondaryPage(title: "屏幕设置") { settingsCard } }
             )
-            connectionManagementCard
+            deviceManagementCard
         }
     }
 
@@ -371,8 +374,11 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(ble.isReady ? "圆屏已连接" : "圆屏未连接")
                             .font(.caption.weight(.semibold))
-                        Text(ble.screenBattery.map { "电量 \($0)%" } ?? "查看设备")
-                            .font(.caption2)
+                        HStack(spacing: 4) {
+                            BatteryGauge(percent: ble.screenBattery, charging: ble.screenCharging, width: 20, height: 10)
+                            Text(ble.screenBattery.map { "\($0)%" } ?? "查看设备")
+                                .font(.caption2)
+                        }
                     }
                 }
                 .foregroundColor(AppTheme.text)
@@ -423,26 +429,56 @@ struct ContentView: View {
                 Text("跟随系统").tag(0); Text("浅色").tag(1); Text("深色").tag(2)
             }
             .pickerStyle(.segmented)
-            Text("跟随系统时，界面随手机的深色模式自动切换浅色 / 深色；也可以一直用浅色或深色。圆屏小地图的昼夜由「圆屏 → 夜间配色」控制。")
+            Text("跟随系统时，界面随手机的深色模式自动切换浅色 / 深色；也可以一直用浅色或深色。圆屏小地图的昼夜由「设备 → 屏幕设置 → 夜间配色」控制。")
                 .font(.caption2).foregroundColor(AppTheme.sub)
         }
     }
 
-    private var connectionManagementCard:some View {
+    private var deviceManagementCard:some View {
         CardView {
-            Text("连接管理").font(.headline).foregroundColor(AppTheme.text)
-            HStack {
-                GlassChip(title:"换一块圆屏",icon:"arrow.triangle.2.circlepath",tint:Self.cyan){showScreens=true}
-                Spacer()
-                GlassChip(title:"忘掉其他手机",foreground:AppTheme.red,enabled:ble.isReady && ble.verified,compact:true){confirmForgetPhones=true}
+            Text("设备管理").font(.headline).foregroundColor(AppTheme.text)
+            deviceActionRow(icon: "arrow.triangle.2.circlepath", title: "切换设备",
+                            detail: "搜索附近的圆屏") { showScreens = true }
+            Divider().opacity(0.35)
+            deviceActionRow(icon: "clock", title: "同步时间",
+                            detail: "把手机时间写进圆屏", enabled: ble.isReady && ble.verified) {
+                ble.syncPhoneClock(force: true)
+                clockRequested = true
             }
-            Text("更换圆屏时按设备名称选择，并按圆屏提示完成配对。").font(.caption).foregroundColor(Self.sub)
-            Button("校准圆屏时间") {ble.syncPhoneClock(force:true);clockRequested=true}
-                .frame(minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
-                .disabled(!ble.isReady || !ble.verified)
-            if clockRequested {Text("已发送手机时间，圆屏收到后会更新。") .font(.caption).foregroundColor(Self.sub)}
+            Divider().opacity(0.35)
+            deviceActionRow(icon: "iphone.slash", title: "清除其他手机",
+                            detail: "其他手机需重新配对",
+                            destructive: true, enabled: ble.isReady && ble.verified) { confirmForgetPhones = true }
+            if clockRequested {
+                Text("已发送手机时间，圆屏收到后会更新。").font(.caption).foregroundColor(Self.sub)
+            }
         }
+    }
+
+    /// 设备管理里的一行：图标 + 标题 + 一句说明，整行可点，触控高度 46。
+    private func deviceActionRow(icon: String, title: String, detail: String,
+                                 destructive: Bool = false, enabled: Bool = true,
+                                 action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(destructive ? AppTheme.red : (enabled ? AppTheme.accent : AppTheme.sub))
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(destructive ? AppTheme.red : AppTheme.text)
+                    Text(detail).font(.caption).foregroundColor(Self.sub).lineLimit(2)
+                }
+                Spacer(minLength: 4)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
     }
     private var layoutCard:some View {
         CardView {
@@ -955,9 +991,16 @@ func hideKeyboard() {
     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
 }
 
+private extension View {
+    /// 内容一屏放得下时不要回弹，避免看起来还能再滑一点。
+    @ViewBuilder func scrollBounceBehaviorIfFits() -> some View {
+        if #available(iOS 16.4, *) { scrollBounceBehavior(.basedOnSize) } else { self }
+    }
+}
+
 enum TabSpec {
     static let count=4
-    static let titles=["导航","轨迹","圆屏","我的"]
+    static let titles=["导航","轨迹","设备","我的"]
     static let icons=["location.north","map","circle.circle","person"]
     static let fillIcons=["location.north.fill","map.fill","circle.circle.fill","person.fill"]
 }

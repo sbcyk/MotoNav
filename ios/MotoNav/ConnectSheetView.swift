@@ -26,9 +26,9 @@ struct ConnectSheetView: View {
                     .frame(width: 238, height: 238)
 
                 if coord.showBattery {
-                    HStack(spacing: 8) {
-                        Image(systemName: "battery.50").font(.title3).foregroundColor(AppTheme.green)
-                        Text(ble.screenBattery.map { "电量 \($0)%" } ?? "电量 —")
+                    HStack(spacing: 10) {
+                        BatteryGauge(percent: ble.screenBattery, charging: ble.screenCharging, width: 44, height: 22)
+                        Text(ble.screenBattery.map { "\($0)%" } ?? "电量 —")
                             .font(.system(size: 26, weight: .semibold).monospacedDigit()).foregroundColor(AppTheme.text)
                     }
                     .transition(.opacity.combined(with: .move(edge: .bottom)))

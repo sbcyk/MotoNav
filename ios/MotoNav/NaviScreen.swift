@@ -83,11 +83,7 @@ struct NaviScreen: View {
             if !navi.showArrived {
                 topOverlay
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                VStack(spacing: 10) {
-                    if navi.emulating { simulationControlRow }
-                    controlRow
-                    exitButton
-                }
+                controlDock
             }
             if navi.showArrived { arrivedCard }
         }
@@ -136,31 +132,32 @@ struct NaviScreen: View {
         .padding(.top, 8)
     }
 
-    /// 骑行扫视优先级：方向 → 转向距离 → 指令，ETA 和剩余信息退到下方。
+    /// 骑行扫视优先级：方向 → 转向距离 → 指令；ETA 和剩余收到右侧一列。
     private var turnCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 14) {
-                Image(systemName: Self.dirSymbol(navi.uiDir))
-                    .font(.system(size: 38, weight: .bold)).foregroundColor(AppTheme.accent)
-                    .frame(width: 50, height: 58).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(navi.uiDist >= 0 ? Self.distText(navi.uiDist) : Self.dirWord(navi.uiDir))
-                        .font(.system(size: 30, weight: .heavy)).foregroundColor(.white)
-                        .minimumScaleFactor(0.8).lineLimit(1)
-                    Text(navi.uiRoad.isEmpty ? Self.dirWord(navi.uiDir) : "\(Self.dirWord(navi.uiDir)) · \(navi.uiRoad)")
-                        .font(.headline).foregroundColor(.white.opacity(0.88)).lineLimit(2)
-                }
-                Spacer(minLength: 0)
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: Self.dirSymbol(navi.uiDir))
+                .font(.system(size: 32, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 54, height: 54)
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(AppTheme.accent))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(navi.uiDist >= 0 ? Self.distText(navi.uiDist) : Self.dirWord(navi.uiDir))
+                    .font(.system(size: 30, weight: .heavy)).foregroundColor(.white)
+                    .minimumScaleFactor(0.8).lineLimit(1)
+                Text(navi.uiRoad.isEmpty ? Self.dirWord(navi.uiDir) : "\(Self.dirWord(navi.uiDir)) · \(navi.uiRoad)")
+                    .font(.subheadline.weight(.medium)).foregroundColor(AppTheme.hudSub).lineLimit(2)
             }
-            HStack(spacing: 6) {
-                Image(systemName: "clock")
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 3) {
                 Text(Self.etaText(navi.uiRemainS))
-                Spacer()
+                    .font(.system(size: 15, weight: .semibold)).foregroundColor(.white).lineLimit(1)
                 Text(Self.remainText(navi.uiRemainM, navi.uiRemainS))
+                    .font(.caption2).foregroundColor(AppTheme.hudSub).lineLimit(1).minimumScaleFactor(0.85)
             }
-            .font(.footnote.weight(.medium)).foregroundColor(AppTheme.hudSub)
+            .layoutPriority(1)
         }
-        .padding(18)
+        .padding(16)
         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(AppTheme.hudCard))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.white.opacity(0.10)))
     }
@@ -201,63 +198,83 @@ struct NaviScreen: View {
     }
 
     private static func remainText(_ m: Int, _ s: Int) -> String {
-        guard m > 0 || s > 0 else { return " " }
-        return String(format: "剩余 %.1f km · %d 分", Double(m) / 1000, max(1, s / 60))
+        guard m > 0 || s > 0 else { return "—" }
+        return String(format: "%.1f km · %d 分", Double(m) / 1000, max(1, s / 60))
     }
 
-    /// 模拟控制独立一行，避免小屏设备与普通导航按钮互相挤压。
-    private var simulationControlRow: some View {
-        HStack(spacing: 10) {
-            chip(navi.emuPaused ? "play.fill" : "pause.fill", navi.emuPaused ? "继续" : "暂停", on: navi.emuPaused) { navi.toggleEmuPause() }
-            chip("speedometer", "\(navi.emuSpeed) km/h", on: false) { navi.cycleEmuSpeed() }
-            Spacer()
-        }
-        .padding(.horizontal, 24)
-    }
-
-    /// 静音、导航选项与返回设置。
-    private var controlRow: some View {
-        HStack(spacing: 10) {
-            chip(settings.voiceMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
-                 settings.voiceMuted ? "已静音" : "播报", on: settings.voiceMuted) {
-                settings.voiceMuted.toggle()
-                if settings.voiceMuted { Speech.shared.stopNow() }
+    /// 底部控制面板：模拟控制、常用操作和长按结束收进同一张卡片，不再各摆一个方块。
+    private var controlDock: some View {
+        VStack(spacing: 0) {
+            if navi.emulating {
+                HStack(spacing: 8) {
+                    dockButton(navi.emuPaused ? "play.fill" : "pause.fill",
+                               navi.emuPaused ? "继续" : "暂停",
+                               active: navi.emuPaused) { navi.toggleEmuPause() }
+                    dockButton("speedometer", "\(navi.emuSpeed) km/h") { navi.cycleEmuSpeed() }
+                }
+                .padding(.horizontal, 6)
+                Divider().opacity(0.16)
             }
-            Spacer()
-            chip("ellipsis", "更多", on: false) { drive.showMore = true }
-            chip("gearshape", "设置", on: false) { dismiss() }
+            HStack(spacing: 0) {
+                dockButton(settings.voiceMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
+                           settings.voiceMuted ? "已静音" : "播报",
+                           active: settings.voiceMuted) {
+                    settings.voiceMuted.toggle()
+                    if settings.voiceMuted { Speech.shared.stopNow() }
+                }
+                dockDivider
+                dockButton("ellipsis", "更多") { drive.showMore = true }
+                dockDivider
+                dockButton("gearshape", "设置") { dismiss() }
+            }
+            Divider().opacity(0.16)
+            holdToExitRow
         }
-        .padding(.horizontal, 24)
+        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(AppTheme.hudCard))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))   // 长按进度条不越出圆角
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(Color.white.opacity(0.10)))
+        .shadow(color: .black.opacity(0.22), radius: 18, y: 8)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
     }
 
-    /// 导航浮层控制芯片：选中态系统蓝
-    private func chip(_ icon: String, _ title: String, on: Bool, _ action: @escaping () -> Void) -> some View {
-        GlassChip(title: title, icon: icon, tint: on ? AppTheme.accent : nil, foreground: on ? AppTheme.accent : nil, action: action)
+    private var dockDivider: some View {
+        Rectangle().fill(Color.white.opacity(0.14)).frame(width: 1, height: 26)
     }
 
-    /// 长按 0.6 秒才退出；灰底进度 + 红字「退出导航」（冷淡科技 destructive）
-    private var exitButton: some View {
+    /// 面板里的单个操作：图标在上、文字在下，选中态系统蓝。
+    private func dockButton(_ icon: String, _ title: String, active: Bool = false,
+                            _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: icon).font(.system(size: 19, weight: .semibold))
+                Text(title).font(.system(size: 11, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .foregroundColor(active ? AppTheme.accent : .white)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// 长按 0.6 秒结束导航；进度条画在面板内部。
+    private var holdToExitRow: some View {
         ZStack(alignment: .leading) {
-            Capsule().fill(AppTheme.secondaryFill.opacity(0.92))
-                .liquidGlass(Capsule(), tint: nil, interactive: true)
             GeometryReader { g in
-                Capsule().fill(AppTheme.red.opacity(0.55))
+                Rectangle().fill(AppTheme.red.opacity(0.35))
                     .frame(width: holding ? g.size.width : 0)
                     .animation(holding ? .linear(duration: 0.6) : .easeOut(duration: 0.15), value: holding)
             }
-            HStack(spacing: 4) {
-                Text(holdHint ? "要长按才能退出" : (holding ? "松手取消" : "长按"))
-                    .foregroundColor(AppTheme.text)
-                if !holdHint && !holding {
-                    Text("退出导航").foregroundColor(AppTheme.red)
-                }
+            HStack(spacing: 6) {
+                Image(systemName: "power").font(.system(size: 15, weight: .semibold)).foregroundColor(AppTheme.red)
+                Text(holdHint ? "要长按才能结束" : (holding ? "松手取消" : "长按结束导航"))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.white)
             }
-            .font(.headline)
             .frame(maxWidth: .infinity)
         }
-        .frame(height: 48)
-        .clipShape(Capsule())
-        .contentShape(Capsule())
+        .frame(height: 50)
+        .contentShape(Rectangle())
         .accessibilityAction(named: "退出导航") { confirmClose = true }
         .onTapGesture {
             holdHint = true
@@ -267,8 +284,6 @@ struct NaviScreen: View {
             holding = false
             exitNavi()
         }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 24)
     }
 
     /// 到达目的地：显示 4 秒后自动关掉（点一下马上关）

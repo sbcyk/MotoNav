@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 圆屏 Tab：当前状态、产品正视图和两个设置入口。
+/// 设备 Tab：当前连接状态、产品正视图和两个屏幕设置入口。
 struct DeviceConnectionCard<DisplayDest: View, SystemDest: View>: View {
     @ObservedObject var ble = BleLink.shared
     @ObservedObject private var connectAnim = ConnectAnimationCoordinator.shared
@@ -16,42 +16,43 @@ struct DeviceConnectionCard<DisplayDest: View, SystemDest: View>: View {
                         Spacer(minLength: 4)
                         deviceArtwork
                     }
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 14) {
                         HStack { Spacer(minLength: 0); deviceArtwork; Spacer(minLength: 0) }
                         deviceInfo
                     }
                 }
             } else {
                 // iOS 15 没有 ViewThatFits，固定上下排布避免窄屏横向溢出。
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 14) {
                     HStack { Spacer(minLength: 0); deviceArtwork; Spacer(minLength: 0) }
                     deviceInfo
                 }
             }
             Divider().opacity(0.35)
             HStack(spacing: 0) {
-                NavigationLink(destination: displayDestination()) { deviceQuickLinkLabel("圆屏显示", "sun.max") }.buttonStyle(.plain)
+                NavigationLink(destination: displayDestination()) { deviceQuickLinkLabel("屏幕显示", "sun.max") }.buttonStyle(.plain)
                 Divider().frame(height: 30).opacity(0.35)
-                NavigationLink(destination: systemDestination()) { deviceQuickLinkLabel("圆屏设置", "gearshape") }.buttonStyle(.plain)
+                NavigationLink(destination: systemDestination()) { deviceQuickLinkLabel("屏幕设置", "gearshape") }.buttonStyle(.plain)
             }
         }
     }
 
     private var deviceInfo: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text("导航屏").font(.footnote.weight(.medium)).foregroundColor(AppTheme.sub)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("圆屏").font(.footnote.weight(.medium)).foregroundColor(AppTheme.sub)
             Text(ble.screenName.isEmpty ? "MotoNav" : ble.screenName)
-                .font(.system(size: 27, weight: .bold)).foregroundColor(AppTheme.text).lineLimit(2).minimumScaleFactor(0.8)
+                .font(.system(size: 24, weight: .bold)).foregroundColor(AppTheme.text).lineLimit(2).minimumScaleFactor(0.8)
             HStack(spacing: 7) {
                 Circle().fill(ble.isReady ? AppTheme.green : AppTheme.amber).frame(width: 9, height: 9)
                 Text(ble.connectionSummary).font(.subheadline.weight(.medium))
                     .foregroundColor(ble.isReady ? AppTheme.green : AppTheme.sub).lineLimit(2)
             }
-            HStack(spacing: 6) {
-                Image(systemName: "battery.50").font(.caption)
-                Text(ble.screenBattery.map { "电量 \($0)%" } ?? "电量 —").font(.footnote.weight(.semibold).monospacedDigit())
+            HStack(spacing: 8) {
+                BatteryGauge(percent: ble.screenBattery, charging: ble.screenCharging, width: 30, height: 15)
+                Text(ble.screenBattery.map { "\($0)%" } ?? "电量未知")
+                    .font(.footnote.weight(.semibold).monospacedDigit())
+                    .foregroundColor(AppTheme.sub)
             }
-            .foregroundColor(AppTheme.sub)
             GlassButton(title: ble.isReady ? "断开连接" : "连接圆屏", icon: ble.isReady ? "bolt.slash" : "bolt.fill", style: .tinted) {
                 if ble.isReady { ble.disconnect() } else { connectAnim.connectManually() }
             }
@@ -61,10 +62,10 @@ struct DeviceConnectionCard<DisplayDest: View, SystemDest: View>: View {
 
     private var deviceArtwork: some View {
         ZStack(alignment: .bottom) {
-            Image("GroundShadow").resizable().scaledToFit().frame(width: 136, height: 30).offset(y: 7).opacity(0.7)
-            Image("DevicePuckHero").resizable().scaledToFit().frame(width: 138, height: 154)
+            Image("GroundShadow").resizable().scaledToFit().frame(width: 120, height: 26).offset(y: 6).opacity(0.7)
+            Image("DevicePuckHero").resizable().scaledToFit().frame(width: 120, height: 134)
         }
-        .frame(width: 144, height: 164).accessibilityHidden(true)
+        .frame(width: 126, height: 146).accessibilityHidden(true)
     }
 
     private func deviceQuickLinkLabel(_ title: String, _ icon: String) -> some View {

@@ -254,3 +254,56 @@ struct GlassChip: View {
         .opacity(enabled ? 1 : 0.38)
     }
 }
+
+/// 电量条：按真实百分比填充，颜色随剩余电量变化；没收到电量时是空槽。
+/// 圆屏只在连接后回传电量，所以 `percent` 是可选的。
+struct BatteryGauge: View {
+    var percent: Int?
+    var charging = false
+    var width: CGFloat = 32
+    var height: CGFloat = 16
+
+    private var level: Double {
+        guard let percent else { return 0 }
+        return Double(max(0, min(100, percent))) / 100
+    }
+
+    private var tint: Color {
+        guard let percent else { return AppTheme.sub }
+        if charging { return AppTheme.green }
+        if percent <= 20 { return AppTheme.red }
+        if percent <= 45 { return AppTheme.amber }
+        return AppTheme.text
+    }
+
+    private var corner: CGFloat { height * 0.34 }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .fill(tint.opacity(0.16))
+                GeometryReader { g in
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .fill(tint)
+                        .frame(width: g.size.width * level)
+                }
+                if charging {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: height * 0.62, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .frame(width: width, height: height)
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .stroke(tint.opacity(0.45), lineWidth: 1))
+            Capsule()
+                .fill(tint.opacity(0.45))
+                .frame(width: max(1.5, height * 0.12), height: height * 0.42)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(percent.map { "电量 \($0)%" + (charging ? "，充电中" : "") } ?? "电量未知")
+    }
+}
