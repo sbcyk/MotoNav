@@ -198,7 +198,9 @@ UI 是脏标记 + 按需重绘，不是固定帧率。项目里说的"帧率"指
 - 整屏 434 KB 推屏在 40 MHz QSPI 4 线下理论约 22 ms（160 Mbit/s），加上渲染和 `memset`，**30 fps 就是这段动画的实际天花板**；逐帧位图动画要跑满 30 fps 得先发 `#q,80`（约 11 ms）。这个预算决定了动画只能走矢量/局部重绘，或者低位深 + RLE
 - 17 个品牌：MOTONAV / HONDA / YAMAHA / SUZUKI / KAWASAKI / BMW / DUCATI / KTM / TRIUMPH / HARLEY-DAVIDSON / APRILIA / CFMOTO / QJMOTOR / VOGE / ZONTES / BENELLI / ROYAL ENFIELD
 - 纯代码矢量绘制（`Painter` 类，line / arc / rect / light 抗锯齿），不是图片序列；文字用 5×7 点阵，**只支持 A-Z、空格、连字符**
-- 品牌位图在 `resources/BrandLogos.h`，658KB
+- 品牌位图在 `resources/BrandLogos.h`。**源文件 664 KB 是十六进制字面量撑出来的文本，编译后实际约 275 KB**（16 张标合计 70,555 对 × 4 字节）。算 flash 预算按 275 KB，不要按文件大小
+- 目标形态是**混合**：背景一张 8bpp 位图一次画完，前景的环、扫描光、标识仍走 `Painter` 矢量。logo 只留两个——MOTONAV（id 0，`drawBadge` 末尾那段矢量摩托，不是位图）和无极 VOGE（id 13，`data13`，1,260 对 ≈ 2.5 KB）。其余 15 张删数据、`Logos[]` 槽位留空，`w == 0` 回退默认摩托动画
+- `Brands[]` 的 17 个名字和 `valid()` 的值域 `0..17` **不跟着缩**：缩了会让 NVS 里已存的 `bootbrand` 指到别的品牌，也强制 iOS 端同步改，变成不兼容改动。删标只删位图数据，不动 ID 表
 - 选中哪个品牌存在 NVS 键 `bootbrand`，值域 `0..17`：`0` 是 MOTONAV，`1..16` 是各车厂，`17` 不叠加任何品牌标（`drawBadge` 里 `if(id==Off) return`）
 - 品牌 ID 是协议里的稳定 ID，改这里必须同步手机端 `BootBrand.swift` / `BootBrand.kt`
 
