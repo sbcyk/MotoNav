@@ -4,6 +4,8 @@ import Foundation
 /// All state is used on the main thread. No request is made while the toggle is off.
 final class LyricsBridge {
     static let shared = LyricsBridge()
+    /// 请求头里报的版本，跟 App 版本走（`MARKETING_VERSION`），不另外维护
+    private static let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     private struct Record: Decodable {
         let trackName: String, artistName: String, albumName: String?, duration: Double
         let instrumental: Bool?, syncedLyrics: String?
@@ -57,7 +59,8 @@ final class LyricsBridge {
         if let cached = cache[track.key], cached.expires > Date().timeIntervalSince1970 { apply(cached, track: track, token: token); return }
         guard let url = track.url else { return }
         var request = URLRequest(url: url); request.timeoutInterval = 12
-        request.setValue("MotoNav/0.12.1 (iOS; optional synced lyrics)", forHTTPHeaderField: "User-Agent")
+        // User-Agent 只能是 ASCII，所以用工程名而不是「导一导」；版本动态读，别再手写一个会过期的号
+        request.setValue("MotoNav/\(Self.appVersion) (iOS; optional synced lyrics)", forHTTPHeaderField: "User-Agent")
         task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
             var result = Cached(timeline: nil, status: "歌词服务暂不可用，保留歌名和歌手", expires: Date().timeIntervalSince1970 + 60)
             if (response as? HTTPURLResponse)?.statusCode == 404 { result.status = "未找到匹配的逐句歌词"; result.expires += 540 }
