@@ -192,9 +192,12 @@ UI 是脏标记 + 按需重绘，不是固定帧率。项目里说的"帧率"指
 
 ### 开屏动画（`BootAnimation.h`）
 
+- **画布 466×466，和 1.75 圆屏整屏一一对应**（`BootAnimation::Size = 466`）。直接画进现有 framebuffer（`gfx->getFramebuffer()`，RGB565 `uint16_t`，466×466×2 = 434,312 字节），不另开画布、不留中间层，`render()` 第一件事就是 `memset` 整屏
+- **时长 `Duration = 1900` ms**，在 `setup()` 里阻塞播放：每帧 `render(ms)` → `flushSync()` 整屏推屏 → `delay` 补到 33 ms 一帧；播完才 `buttonsArm()`
+- **不读文件、不申请堆内存**：素材全部编译进 flash，运行时从映射地址直接读（`BrandLogos.h` 的 RGB565 RLE 就是这么用的）。板上没有挂载任何文件系统，开机阶段也不该去挂
+- 整屏 434 KB 推屏在 40 MHz QSPI 4 线下理论约 22 ms（160 Mbit/s），加上渲染和 `memset`，**30 fps 就是这段动画的实际天花板**；逐帧位图动画要跑满 30 fps 得先发 `#q,80`（约 11 ms）。这个预算决定了动画只能走矢量/局部重绘，或者低位深 + RLE
 - 17 个品牌：MOTONAV / HONDA / YAMAHA / SUZUKI / KAWASAKI / BMW / DUCATI / KTM / TRIUMPH / HARLEY-DAVIDSON / APRILIA / CFMOTO / QJMOTOR / VOGE / ZONTES / BENELLI / ROYAL ENFIELD
-- 固定 `Duration = 1900` 毫秒
-- 纯代码矢量绘制（`Painter` 类，line / arc / rect / light 抗锯齿），不是图片序列
+- 纯代码矢量绘制（`Painter` 类，line / arc / rect / light 抗锯齿），不是图片序列；文字用 5×7 点阵，**只支持 A-Z、空格、连字符**
 - 品牌位图在 `resources/BrandLogos.h`，658KB
 - 选中哪个品牌存在 NVS 键 `bootbrand`，值域 `0..17`：`0` 是 MOTONAV，`1..16` 是各车厂，`17` 不叠加任何品牌标（`drawBadge` 里 `if(id==Off) return`）
 - 品牌 ID 是协议里的稳定 ID，改这里必须同步手机端 `BootBrand.swift` / `BootBrand.kt`
