@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// 设备 Tab：当前连接状态、产品正视图和两个屏幕设置入口。
+/// 设备 Tab：当前连接状态、产品正视图和屏幕设置 / 同步时间入口。
 struct DeviceConnectionCard<DisplayDest: View, SystemDest: View>: View {
     @ObservedObject var ble = BleLink.shared
     @ObservedObject private var connectAnim = ConnectAnimationCoordinator.shared
+    @State private var synced = false
     @ViewBuilder var displayDestination: () -> DisplayDest
     @ViewBuilder var systemDestination: () -> SystemDest
 
@@ -33,8 +34,22 @@ struct DeviceConnectionCard<DisplayDest: View, SystemDest: View>: View {
                 NavigationLink(destination: displayDestination()) { deviceQuickLinkLabel("屏幕显示", "sun.max") }.buttonStyle(.plain)
                 Divider().frame(height: 30).opacity(0.35)
                 NavigationLink(destination: systemDestination()) { deviceQuickLinkLabel("屏幕设置", "gearshape") }.buttonStyle(.plain)
+                Divider().frame(height: 30).opacity(0.35)
+                Button {                     // 连上就能点，放在连接卡片里，不再单独占一行
+                    ble.syncPhoneClock(force: true)
+                    synced = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { synced = false }
+                } label: {
+                    // 反馈落在按钮自己身上，不额外加行，卡片高度不变、页面就不会被迫滚动 // v1.0
+                    deviceQuickLinkLabel(synced ? "已同步" : "同步时间",
+                                         synced ? "checkmark.circle.fill" : "clock",
+                                         enabled: ble.isReady && ble.verified)
+                }
+                .buttonStyle(.plain)
+                .disabled(!ble.isReady || !ble.verified)
             }
         }
+        .onChange(of: ble.isReady) { ready in if !ready { synced = false } }
     }
 
     private var deviceInfo: some View {
@@ -68,11 +83,13 @@ struct DeviceConnectionCard<DisplayDest: View, SystemDest: View>: View {
         .frame(width: 126, height: 146).accessibilityHidden(true)
     }
 
-    private func deviceQuickLinkLabel(_ title: String, _ icon: String) -> some View {
-        HStack(spacing: 7) {
+    private func deviceQuickLinkLabel(_ title: String, _ icon: String, enabled: Bool = true) -> some View {
+        HStack(spacing: 6) {
             Image(systemName: icon).font(.system(size: 15, weight: .semibold))
-            Text(title).font(.subheadline.weight(.semibold))
+            Text(title).font(.subheadline.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.8)
         }
-        .foregroundColor(AppTheme.accent).frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+        .foregroundColor(enabled ? AppTheme.accent : AppTheme.sub)
+        .frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
+        .opacity(enabled ? 1 : 0.45)
     }
 }

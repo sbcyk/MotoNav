@@ -29,7 +29,6 @@ struct ContentView: View {
     @State private var showRides = false
     @State private var showScreens=false
     @State private var confirmForgetPhones=false
-    @State private var clockRequested=false
     @State private var showMapReport=false
     @AppStorage("voice_rate") private var voiceRate = Double(AVSpeechUtteranceDefaultSpeechRate)
     @AppStorage("voice_pitch") private var voicePitch = 1.0
@@ -440,22 +439,13 @@ struct ContentView: View {
             deviceActionRow(icon: "arrow.triangle.2.circlepath", title: "切换设备",
                             detail: "搜索附近的圆屏") { showScreens = true }
             Divider().opacity(0.35)
-            deviceActionRow(icon: "clock", title: "同步时间",
-                            detail: "把手机时间写进圆屏", enabled: ble.isReady && ble.verified) {
-                ble.syncPhoneClock(force: true)
-                clockRequested = true
-            }
-            Divider().opacity(0.35)
             deviceActionRow(icon: "iphone.slash", title: "清除其他手机",
                             detail: "其他手机需重新配对",
                             destructive: true, enabled: ble.isReady && ble.verified) { confirmForgetPhones = true }
-            if clockRequested {
-                Text("已发送手机时间，圆屏收到后会更新。").font(.caption).foregroundColor(Self.sub)
-            }
         }
     }
 
-    /// 设备管理里的一行：图标 + 标题 + 一句说明，整行可点，触控高度 46。
+    /// 设备管理里的一行：图标 + 标题 + 一句说明，整行可点，触控高度 44。
     private func deviceActionRow(icon: String, title: String, detail: String,
                                  destructive: Bool = false, enabled: Bool = true,
                                  action: @escaping () -> Void) -> some View {
