@@ -96,9 +96,9 @@ void renderPage(int p, int detail, bool staticHome) {
   else if (p == 1) { wxDetail = detail; drawWeather(); }
   else if (inNav) drawNavFrame();
   else {
-    hSkipMixOnce = staticHome;
+    hSnapOnce = staticHome;
     drawWaiting(homeLinkReady() ? WAIT_READY : WAIT_NOLINK);   // v2.1 与主循环同一判定
-    hSkipMixOnce = false;                    // 万一 drawWaiting 早退，别把标志留给下一帧
+    hSnapOnce = false;                    // 万一 drawWaiting 早退，别把标志留给下一帧
   }
   page = keep; wxDetail = keepDetail; sliding = ks;
 }

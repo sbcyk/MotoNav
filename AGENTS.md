@@ -139,7 +139,7 @@ firmware/
 
 | 文件 | 内容 |
 |---|---|
-| `src/pages/HomePage.h` | 骑行前默认界面：像素风黄昏赐福，两幅画面存在 `resources/HomeSprites.h`（8bpp 索引、233×233、各约 54KB 在 flash，显示按 2× 放大）：未连接=褪色者独坐赐福旁（远处废墟与远山），已连接=托雷特站在他身旁、他站着牵缰。两幅取自不同参考图，取景宽度按“主体一样大”定（512 / 683），赐福火落在同一个屏幕位置。连上 / 断开走抖动溶解过渡（600ms，按两图差异加权、马那块权重最高、锋面点成金色光点）并在赐福处闪一下（320ms 加色），光尘从火光升起。绘制分整帧（进页面 / 浮层）、溶解（状态切换 600ms）与局部（静置 10fps 只擦光尘那一小块），推屏走同步单缓冲；所有绘制裁到圆内（`hCircleSpan`）。点屏幕开信息浮层，6 秒自动收起。三态 `WAIT_READY / WAIT_NOLINK / WAIT_LOST`。**“连上没有”统一由 `homeLinkReady()`（`src/connectivity/Bluetooth.h`）判定**，它只看 `bleConnected`——v2.1.1 起因实测发现 `bleAuthed` 要等手机上某次写操作才触发加密、最长拖 30 秒，画面不能跟着等；主循环、`renderPage`、侧键回首页、状态栏小绿点、`#C` 共用它。认证只属于数据通道（RX 写权限 / 通知 / HID / 导航），不要在画面路径里混用 `bleAuthed`；溶解进度记在 `hMixT` + `hMixDir` 上，目标中途改回来时只把方向取反、原路退回；主循环每帧比对屏上状态与实际状态，切换被吞掉时下一帧自愈 |
+| `src/pages/HomePage.h` | 骑行前默认界面：像素风黄昏赐福。素材在 `resources/HomeSprites.h`（8bpp 索引、233×233、数据约 107KB，两态共用一张 256 色调色板，显示按 2× 最近邻放大）。**v2.2 起两态共用同一张背景**：母版是 `home-standing.png`（站立牵马，峡谷、王城、黄金树一起入画），断开态只在“人马蒙版”里换成 AI 补全的空场景＋单独生成的坐姿褪色者，蒙版外逐像素复制母版；`scripts/home_sprites.py` 每次生成都校验“人马矩形外失配 = 0”，不为 0 直接报错。于是状态切换只重绘人和马那一块：人按纵向扫描从脚往上起身（`hStood`，13 px 噪声过渡带，边缘是碎的），马由 150 个蓝色粒子聚拢并按“下先上后”逐像素显形（`hHorseSparks` + `hHorseOrder`），断开时进度反向走 = 马先散、人后坐。赐福光随姿态变：坐着亮（档位 16）、光尘升得高（150 px），站着暗（12）、矮（108 px）。绘制分整帧（过渡 / 进页面 / 浮层）与局部（静置 10fps 只擦光尘那一小块），推屏走同步单缓冲；所有绘制裁到圆内（`hCircleSpan`）。点屏幕开信息浮层，6 秒自动收起。三态 `WAIT_READY / WAIT_NOLINK / WAIT_LOST`。**“连上没有”统一由 `homeLinkReady()`（`src/connectivity/Bluetooth.h`）判定**，它只看 `bleConnected`——v2.1.1 起因实测发现 `bleAuthed` 要等手机上某次写操作才触发加密、最长拖 30 秒，画面不能跟着等；主循环、`renderPage`、侧键回首页、状态栏小绿点、`#C` 共用它。认证只属于数据通道（RX 写权限 / 通知 / HID / 导航），不要在画面路径里混用 `bleAuthed`。过渡进度记在 `hT` + `hDir` 上，目标中途改回来时只把方向取反、原路退回；主循环每帧比对屏上状态与实际状态，切换被吞掉时下一帧自愈 |
 | `src/pages/NavigationPage.h` | 导航主界面 |
 | `src/pages/WeatherPage.h` | 天气页（第 2 页） |
 | `src/pages/IncomingCall.h` | 来电界面 + **`touchPoll()` 全部触摸逻辑** |
@@ -319,7 +319,7 @@ esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRAM=opi,CD
 
 - 分区表只决定代码和文件写入的地址与上限，不改变 Flash 模式/频率、PSRAM 模式、CPU 频率与 cache 配置，因此与运行速度无关。
 - 切换方案必须整片刷（`--erase-all`），NVS 位于 `0x9000`，其余区域地址随方案变化，设置与手机配对会清空。
-- 当前固件占用 app0 1,308,352 字节（镜像），约 4.50MB 方案的 28%、12.50MB 方案的 10%。
+- 当前固件占用 app0 1,403,255 字节（镜像），约 4.50MB 方案的 29%、12.50MB 方案的 11%。
 - 当前固件未挂载任何文件系统：源码中无 `FATFS`/`FFat`/`SPIFFS` 引用，上述 ffat / spiffs 分区目前均为未使用空间。
 - `max_app_32MB.csv`（单槽 31.87MB，无 OTA、无文件系统）存在于 `tools/partitions/`，但不是菜单项，要使用需自定义分区表。
 
@@ -421,7 +421,7 @@ iOS 出包：`Run workflow` → 选分支 → note 填本次改了什么 → 跑
 | `CHANGELOG.md` | 版本改动摘要，Keep a Changelog 格式（发版时写） |
 | `docs/需求清单.md` | 需求、进度、阻塞项、验收记录（唯一记录处） |
 | `docs/IOS-CI-GUIDE.md` | iOS 云端出包 9 步操作 |
-| `scripts/home_sprites.py` | 生成主页两幅画面 `resources/HomeSprites.h`（8bpp 233×233，两幅各约 54KB）。两张参考图在 `assets/reference/`：<br>· 未连接 ← `home-dual-pose.png` 的**上格**（1536×1024 双姿态图，上格人独坐无马），取 512×504<br>· 已连接 ← `home-standing.png`（1536×1024 紧凑构图，人站着牵马），取 683×683<br>683 是按“主体一样大”量出来的：两图火焰列高度都是 129 px。**不要为了把王城框进来把这个数放大到 1024**——那样已连接那张整体缩到 67%，切换时肉眼可见镜头拉远。两张都让火落在同一个屏幕位置（233 尺度 OFF x=151 / ON x=155），切换时人和火不跳。`HOME_BEAM_*` 锚点由脚本求出：x 取“暖色高亮行数最多的那一列”，y 取每张图各自的基线常数；换参考图或改取景框后要重新量基线，对不上脚本会报错而不是静默跑偏 |
+| `scripts/home_sprites.py` | 生成主页两态画面 `resources/HomeSprites.h`（8bpp 233×233，数据约 107KB）。三张参考图都在 `assets/reference/`：<br>· `home-standing.png` 母版，683×683 取景（站立牵马、峡谷、王城、黄金树），连接态直接用它<br>· `home-standing-empty.png` 同一张图把人和马挖掉后由 AI 补全的空场景（草坡、岩壁、天空）<br>· `home-seated.png` 单独生成的坐姿褪色者，平涂底色，色键抠图后贴进空场景<br>脚本把人马蒙版外全部复制母版，再让两态共用一张调色板 + 同一个 Bayer 抖动场（偏移只跟坐标有关，同一坐标同色必得同一索引），最后校验“人马矩形外失配 = 0”，不为 0 直接报错。`HOME_BEAM_*` 锚点与 `HOME_MAN_*` / `HOME_HRS_*` 两块矩形也由它写出；锚点 x 取“暖色高亮行数最多的那一列”，y 取基线常数 180——换参考图或改取景框后要重新量基线，对不上脚本会报错而不是静默跑偏。旧的 `home-dual-pose.png` 已不引用，留作备选 |
 | `scripts/home_preview.py` | PC 端预览主页画面，输出 `scripts/preview/*.png`，需 Pillow |
 | `.github/workflows/ios-quick.yml` | 精简工作流，8~15 分钟出 unsigned IPA |
 | `firmware/README.md` | 上游固件说明（描述上游 `7.12.10-phone.8`，不随本仓库版本变） |

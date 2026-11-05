@@ -1,13 +1,14 @@
 #pragma once
-// 首页：黄昏赐福。两幅画面来自 resources/HomeSprites.h（8bpp 索引色，233x233，
-// 显示时按 2x 最近邻放大）：未连接是褪色者独坐赐福旁，已连接是托雷特站在他身旁、
-// 他站着牵缰。两幅取自不同的参考图，取景宽度按“主体一样大”定（512 / 683），
-// 且让赐福火落在同一个屏幕位置，切换时人和火不跳。素材由 scripts/home_sprites.py 生成。
+// 首页：黄昏赐福。两态共用一张背景，只有人和马那一块不同：
+// 未连接是褪色者独坐赐福旁，已连接是托雷特由蓝色粒子聚合现身、褪色者起身牵缰。
 //
-// 绘制分三种：整帧（进页面 / 浮层开关）、溶解（状态切换的 600ms 过渡）、
-// 局部（静置时的光尘与火光）。
-// 推屏始终是整屏一次；省下来的是绘制量——局部只擦上一帧特效那一小块再重画，
-// 静置时每帧只有几百个像素级操作，整帧则要写满 18 万个显示像素。
+// v2.2 起不再用“两张整图抖动溶解”。素材侧把两态的**人马矩形之外**做成逐像素相同、
+// 共用同一张调色板（scripts/home_sprites.py 会校验，失配就报错），所以：
+//   · 状态切换只重绘人和马那一小块，天空、峡谷、王城、黄金树、赐福火一动不动；
+//   · 人靠纵向扫描从脚往上“立”起来，马靠蓝色粒子从地面聚拢成形；
+//   · 赐福光随姿态变：坐着时更亮更高（有交互），站着时暗一点矮一点（无交互）。
+// 绘制仍分整帧（进度推进 / 进页面 / 浮层）和局部（静置的光尘与火光）两种。
+// 推屏始终整屏一次；局部只擦上一帧特效那一小块再重画，静置时每帧只有几百个像素级操作。
 // 画面走同步推屏（单缓冲），局部更新才不会画到屏幕没在显示的那块缓冲上。
 
 #define WAIT_READY  0
@@ -17,42 +18,46 @@
 #include "../../HomeClock.h"
 HomeClock homeClock;
 
-// ================= 赐福配色（RGB565）=================
+// ================= 配色（RGB565）=================
 #define H_AMBER   0xFD46   // 外晕金 (255,168,48)
 #define H_HOLY    0xFE90   // 光芯金 (255,210,132)
 #define H_DUST    0xFDEB   // 光尘
 #define H_SPECTRAL_HI 0xEFFF
+#define H_SPARK_HI 0x8E5F  // 马粒子：亮蓝白
+#define H_SPARK    0x3BDB  // 马粒子：蓝
+#define H_SPARK_LO 0x19F1  // 马粒子：暗蓝
 #define H_CARD    0x10A3   // 浮层卡片
 #define H_CARD_ED 0x39E7   // 浮层描边
 
 // ================= 构图 =================
 #define H_DUST_N     26        // 光尘数量
-#define H_DUST_TOP  150        // 光尘上升行程（显示像素）
 #define H_DUST_SPAN  36        // 特效包围盒半宽（光尘实际散布 32，留 4 像素余量）
+#define H_DUST_TOP_SIT   150   // 坐着时光尘上升行程（显示像素）
+#define H_DUST_TOP_STAND 108   // 站着时行程短一截：赐福没被交互
+#define H_MAN_UNTIL  0.55f     // 进度到 55% 时人已经站直，剩下的都留给马
+#define H_HRS_FROM   0.25f     // 马从 25% 开始聚合，到 100% 成完
+#define H_MAN_BAND   13        // 起身扫描带的半宽（源像素）：带内按噪声逐个翻，不是一刀切
 #define HOME_FRAME_MS  100     // 静置 10fps：只重画光尘那一小块
 #define HOME_FLASH_MS  320     // 切换状态时赐福闪一下的时长
-#define HOME_MIX_MS    600     // 状态切换时两张图抖动溶解的时长
-#define MIX_WMIN       5       // 溶解权重下限：差异为 0 的像素末段也要翻过去，所以不能取 0
-#define MIX_WMAX      44       // 溶解权重上限
+#define HOME_SWITCH_MS 700     // 起身 / 坐下 + 马聚合消散的全程
 
-// 马在“已连接”那张里的位置（233 尺度），溶解时这块先化。
-// 跟着 ON_CROP 走：改取景框就要重新标这个椭圆，否则光点会闪在空地上。
-#define H_HORSE_CX  52
-#define H_HORSE_CY  95
-#define H_HORSE_RX  62
-#define H_HORSE_RY  72
-#define H_HORSE_R2 ((H_HORSE_RX * H_HORSE_RY) * (H_HORSE_RX * H_HORSE_RY))
+// 进度分配：人先起身（前 55%），马在后段聚合（25%~100%）。
+// 断开时进度反向走，于是“马先散、人后坐”，正好是想要的顺序。
+static inline float hManProgress(float t) {
+  float v = t / H_MAN_UNTIL;
+  return v < 0 ? 0 : (v > 1 ? 1 : v);
+}
+static inline float hHrsProgress(float t) {
+  float v = (t - H_HRS_FROM) / (1.0f - H_HRS_FROM);
+  return v < 0 ? 0 : (v > 1 ? 1 : v);
+}
 
 // ================= 素材 =================
 #include "../../resources/HomeSprites.h"
 
-// 两张图必须同尺寸：整帧绘制按同一套 2x 坐标写两张图的像素
-static_assert(SCENE_ON_W == SCENE_OFF_W && SCENE_ON_H == SCENE_OFF_H,
-              "SCENE_OFF / SCENE_ON 尺寸必须一致");
-
-// 整帧 / 溶解按源像素 2x 写画布，而 hCircleSpan 与 hPix 走的是显示坐标，
+// 整帧 / 局部都按源像素 2x 写画布，而 hCircleSpan 与 hPix 走显示坐标，
 // 两套圆内判定只有在“显示尺寸 = 源尺寸 × 2”时才等价，这里锁死。
-static_assert(LCD_WIDTH == SCENE_OFF_W * 2 && LCD_HEIGHT == SCENE_OFF_H * 2,
+static_assert(LCD_WIDTH == SCENE_W * 2 && LCD_HEIGHT == SCENE_H * 2,
               "显示尺寸必须是源图的 2 倍");
 
 // 加色叠加：光是加到画面上，不是盖掉背景；k = 0~16，越大越亮
@@ -65,7 +70,6 @@ static inline uint16_t hadd(uint16_t p, uint16_t c, int k) {
 
 // 圆屏有效区：画布是方的，圆外那圈不发光。光效与局部擦除都裁到圆内，
 // 圆外保持初始化时的黑，否则光尘飘出圆外的部分会留在已废弃的画布角落。
-// （信息浮层和页码点画在圆心附近，不经过这里。）
 static inline void hCircleSpan(int y, int &x0, int &x1) {
   const float r = LCD_WIDTH * 0.5f;
   const float dy = (float)y + 0.5f - r;
@@ -103,13 +107,21 @@ static void hAddEllipse(int cx, int cy, int rx, int ry, uint16_t c, int kMax) {
 }
 
 // ================= 画面 =================
-static bool  hOnScene = false;             // false = 未连接画面，true = 已连接画面
-static int   hBox[4] = {0, 0, 0, 0};       // 上一帧特效矩形（显示像素），局部擦除用
+static float  hT = 0;                       // 0 = 未连接（坐、无马），1 = 已连接（站、有马）
+static int8_t hDir = 0;                     // +1 朝已连接推进，-1 朝未连接退回，0 静置
+static unsigned long hTAt = 0;
+static int   hBox[4] = {0, 0, 0, 0};        // 上一帧特效矩形（显示像素），局部擦除用
 
-// 取一个显示像素：直接查当前那张图，1 源像素对应 2x2 显示像素
+// 取一个源像素的调色板下标。局部擦除只在静置时调用（过渡中一律整帧），
+// 那时 hT 必定是 0 或 1，取哪张都干净。
+static inline uint8_t hPixIdx(int sx, int sy) {
+  const size_t o = (size_t)sy * SCENE_W + sx;
+  return hT >= 0.5f ? SCENE_ON_BITS[o] : SCENE_OFF_BITS[o];
+}
+
+// 取一个显示像素（局部擦除用）
 static inline uint16_t hPix(int x, int y) {
-  const size_t o = (size_t)(y >> 1) * SCENE_OFF_W + (x >> 1);
-  return hOnScene ? SCENE_ON_PAL[SCENE_ON_BITS[o]] : SCENE_OFF_PAL[SCENE_OFF_BITS[o]];
+  return SCENE_PAL[hPixIdx(x >> 1, y >> 1)];
 }
 
 // 一个源行对应两行显示像素，取这两行在圆内的并集（已按 2 对齐，源像素一次写两个）。
@@ -130,41 +142,7 @@ static inline void hScenePairSpan(int sy, int &x0, int &x1) {
   if (x1 > LCD_WIDTH) x1 = LCD_WIDTH;
 }
 
-// 整帧：逐像素写画布，圆屏四角看不到，按行只写圆内那一段
-static void hFullScene() {
-  uint16_t *fb = gfx->getFramebuffer();
-  if (!fb) { gfx->fillScreen(C_BLACK); return; }
-  for (int sy = 0; sy < SCENE_OFF_H; sy++) {
-    int x0, x1;
-    hScenePairSpan(sy, x0, x1);
-    if (x0 >= x1) continue;
-    const uint8_t *ra = SCENE_OFF_BITS + (size_t)sy * SCENE_OFF_W;
-    const uint8_t *rb = SCENE_ON_BITS + (size_t)sy * SCENE_ON_W;
-    uint16_t *o0 = fb + (size_t)(sy * 2) * LCD_WIDTH + x0;
-    uint16_t *o1 = o0 + LCD_WIDTH;
-    for (int sx = x0 >> 1; sx < (x1 >> 1); sx++) {
-      const uint16_t c = hOnScene ? SCENE_ON_PAL[rb[sx]] : SCENE_OFF_PAL[ra[sx]];
-      o0[0] = c; o0[1] = c; o1[0] = c; o1[1] = c;
-      o0 += 2; o1 += 2;
-    }
-  }
-}
-
-// ================= 状态切换：抖动溶解 =================
-// 逐像素按固定随机顺序换成新图。每个像素有自己的起翻时刻：两图差得越多越早翻，
-// 马那块再加一份权重，所以马先散；天空、地面两图差得小，翻得晚，翻过去也不显眼。
-// 锋面上“马上要翻”的像素点成金色，读起来就是整屏化开成光点、再重新聚成画面。
-// 不用逐像素混色：混色要算三次乘法，抖动换像素只是一次比较，像素风也更耐这种质变。
-// v2.1 过渡改为“可反向推进”：记进度 hMixT（0 = 起点图，1 = 终点图）而不是开始时刻。
-// 快速连上又断开时，目标会中途改回来，这时只把方向改成 -1，像素按各自的翻转时刻
-// 原路退回起点图——画面从屏幕上这一刻的实际混合态接着走，不会跳回整张图重来。
-static bool hMixFromOn = false;            // 过渡起点是哪张
-static bool hMixing = false;
-static float hMixT = 0;                    // 当前进度：0 = 起点图，1 = 终点图
-static int8_t hMixDir = 1;                 // +1 朝终点推进，-1 原路退回
-static unsigned long hMixAt = 0;           // 上一次推进的时刻（算 dt）
-
-// 稳定的伪随机阈值（按源像素坐标），同一像素每帧都是同一个值，才能“一个一个翻”而不是闪噪
+// 稳定的伪随机阈值（按源像素坐标），同一像素每帧都是同一个值，才能“一个一个长”而不是闪噪
 static inline uint32_t hNoise(int x, int y) {
   // 先转 uint32_t 再乘：x * 73856093 在 int 里会溢出（x>29 就超），有符号溢出是未定义行为
   uint32_t v = ((uint32_t)x * 73856093u) ^ ((uint32_t)y * 19349663u);
@@ -172,52 +150,93 @@ static inline uint32_t hNoise(int x, int y) {
   return v;
 }
 
-static inline int hPalDiff(uint16_t a, uint16_t b) {
-  int d = (int)((a >> 11) & 31) - (int)((b >> 11) & 31); if (d < 0) d = -d;
-  int e = (int)((a >> 5) & 63) - (int)((b >> 5) & 63); if (e < 0) e = -e;
-  int f = (int)(a & 31) - (int)(b & 31); if (f < 0) f = -f;
-  return d + e + f;
+// 马像素的显形时刻：1~256，越小越早。按下半部优先、再叠一份随机，
+// 读起来是“粒子先在地上聚拢，马从地面往上长出来”。
+static inline int hHorseOrder(int sx, int sy) {
+  const int fromBottom = (HOME_HRS_Y1 - sy) * 128 / (HOME_HRS_Y1 - HOME_HRS_Y0);
+  return 1 + (int)(hNoise(sx, sy) & 127) + fromBottom;
 }
 
-static void hMixScene(float t) {
+// 人起身的判定位：扫描线附近的过渡带。整块横向替换会把人拦腰截成一条直线，
+// 带内改成按像素噪声一个个翻，边上就是碎的，像素风下读作“人从光里长出来”。
+static inline bool hStood(int sx, int sy, int manLine) {
+  const int d = sy - manLine;
+  if (d >= H_MAN_BAND) return true;
+  if (d <= -H_MAN_BAND) return false;
+  const int th = (d + H_MAN_BAND) * 255 / (2 * H_MAN_BAND);
+  return (int)(hNoise(sx, sy) & 255) < th;
+}
+
+// 扫描线要带外起步：t=0 时整块必须全是坐姿、t=1 时整块必须全是站姿，
+// 否则两端会残留几个过渡带里的杂点，静置画面就永远不干净。
+static inline int hManLine(float manT) {
+  const int span = HOME_MAN_Y1 - HOME_MAN_Y0 + 2 * H_MAN_BAND;
+  return HOME_MAN_Y1 + H_MAN_BAND - (int)(manT * span + 0.5f);
+}
+
+// 整帧：背景两态逐像素相同，只有人和马那两块按进度换
+static void hScene() {
   uint16_t *fb = gfx->getFramebuffer();
   if (!fb) { gfx->fillScreen(C_BLACK); return; }
-  const int k = (int)(t * 256.0f);
-  const uint8_t *oldBits = hMixFromOn ? SCENE_ON_BITS : SCENE_OFF_BITS;
-  const uint16_t *oldPal = hMixFromOn ? SCENE_ON_PAL : SCENE_OFF_PAL;
-  const uint8_t *newBits = hOnScene ? SCENE_ON_BITS : SCENE_OFF_BITS;
-  const uint16_t *newPal = hOnScene ? SCENE_ON_PAL : SCENE_OFF_PAL;
-  for (int sy = 0; sy < SCENE_OFF_H; sy++) {
+  const float manT = hManProgress(hT);
+  const float hrsT = hHrsProgress(hT);
+  const int manLine = hManLine(manT);
+  const int hrsK = (int)(hrsT * 256.0f);
+  for (int sy = 0; sy < SCENE_H; sy++) {
     int x0, x1;
     hScenePairSpan(sy, x0, x1);
     if (x0 >= x1) continue;
-    const uint8_t *ra = oldBits + (size_t)sy * SCENE_OFF_W;
-    const uint8_t *rb = newBits + (size_t)sy * SCENE_OFF_W;
+    const uint8_t *ro = SCENE_OFF_BITS + (size_t)sy * SCENE_W;
+    const uint8_t *rn = SCENE_ON_BITS + (size_t)sy * SCENE_W;
+    const bool manRow = (sy >= HOME_MAN_Y0 && sy < HOME_MAN_Y1);
+    const bool hrsRow = (sy >= HOME_HRS_Y0 && sy < HOME_HRS_Y1);
     uint16_t *o0 = fb + (size_t)(sy * 2) * LCD_WIDTH + x0;
     uint16_t *o1 = o0 + LCD_WIDTH;
     for (int sx = x0 >> 1; sx < (x1 >> 1); sx++) {
-      const uint16_t ca = oldPal[ra[sx]];
-      const uint16_t cb = newPal[rb[sx]];
-      // 翻转优先级：两图差得越多越先翻，马那一块再加一份权重
-      const int dx = (sx - H_HORSE_CX) * H_HORSE_RY;
-      const int dy = (sy - H_HORSE_CY) * H_HORSE_RX;
-      const int q2 = dx * dx + dy * dy;
-      int wgt = hPalDiff(ca, cb) + (q2 < H_HORSE_R2 ? (28 * (H_HORSE_R2 - q2)) / H_HORSE_R2 : 0);
-      if (wgt > MIX_WMAX) wgt = MIX_WMAX;
-      // 每个像素有自己的起翻时刻：权重越高越早。用“时刻”而不是“每帧重算的阈值”，
-      // 才能保证 t=1（k=256）压过所有 start<=255，全部翻完、不留残影。
-      const int n = (int)(hNoise(sx, sy) & 255);
-      const int speed = (MIX_WMIN + wgt) * 256 / (MIX_WMIN + MIX_WMAX);   // 26~256
-      int start = 255 - speed * (255 - n) / 255;
-      if (start < 0) start = 0;
-      uint16_t c = (k > start) ? cb : ca;
-      // 锋面上“还没翻、马上要翻”的像素点成金色。用 start>=k 而不是两端对称，
-      // t=0 和 t=1 时锋面为空，两端都是干净的目标图。
-      if (k > 0 && start >= k && start - k < 10 && wgt > 18)
-        c = ((sx ^ sy) & 1) ? H_HOLY : H_AMBER;
+      const uint8_t a = ro[sx], b = rn[sx];
+      uint8_t idx;
+      if (a == b) {
+        idx = b;                                       // 背景：两态一样，取谁都行——这正是不跳的根据
+      } else {
+        const bool inMan = manRow && sx >= HOME_MAN_X0 && sx < HOME_MAN_X1;
+        const bool inHrs = hrsRow && sx >= HOME_HRS_X0 && sx < HOME_HRS_X1;
+        if (inMan && inHrs) {
+          // 马头右缘和人手是连在一起的（母版里他正扶着马头），这块要两边都到位才翻，
+          // 否则会出现“人已经站好、马头先于马身浮在半空”。
+          idx = (hStood(sx, sy, manLine) && hHorseOrder(sx, sy) <= hrsK) ? b : a;
+        } else if (inMan) {
+          idx = hStood(sx, sy, manLine) ? b : a;       // 人：扫描线往上推，下半身先站起来
+        } else if (inHrs) {
+          idx = (hHorseOrder(sx, sy) <= hrsK) ? b : a; // 马：按各自的显形时刻一个个翻
+        } else {
+          idx = b;
+        }
+      }
+      const uint16_t c = SCENE_PAL[idx];
       o0[0] = c; o0[1] = c; o1[0] = c; o1[1] = c;
       o0 += 2; o1 += 2;
     }
+  }
+}
+
+// 马身上的蓝粒子：从落点向四周散开（或反向聚拢）。用固定落点表 + 坐标派生的
+// 抖动量，不存粒子数组——退到哪一帧都能算出来，快速连断也不会留残影。
+static void hHorseSparks(float hrsT) {
+  if (hrsT <= 0.02f || hrsT >= 0.97f) return;
+  const float w = 1.0f - fabsf(2.0f * hrsT - 1.0f);   // 中间最盛，两端收敛
+  const float away = (1.0f - hrsT) * (1.0f - hrsT);   // 还没聚拢时的散开量
+  const int kMax = (int)(26.0f * w) + 4;
+  for (int i = 0; i < HOME_PTS_N; i++) {
+    const int tx = HOME_PTS[i * 2], ty = HOME_PTS[i * 2 + 1];
+    const uint32_t n = hNoise(i * 29 + 7, i * 13 + 3);
+    const int dx = (int)(n & 63) - 32;                // -32..31
+    const int dy = (int)((n >> 6) & 63) - 40;         // 往上飘得多一点
+    const int x = tx + (int)(dx * away * 1.1f);
+    const int y = ty + (int)(dy * away * 1.1f);
+    if (x < 0 || x >= SCENE_W || y < 0 || y >= SCENE_H) continue;
+    const uint16_t c = (i % 3) == 0 ? H_SPARK_HI : ((i % 3) == 1 ? H_SPARK : H_SPARK_LO);
+    const int r = (i % 4) == 0 ? 2 : 1;
+    hAddEllipse(x * 2, y * 2, r, r, c, kMax);
   }
 }
 
@@ -241,22 +260,18 @@ static void hRestore(int x0, int y0, int x1, int y1) {
   }
 }
 
-// 赐福火位置：两张图的火各自在不同位置，取当前这张的坐标再放大 2 倍
-static inline int hBeamX() {
-  return (hOnScene ? HOME_BEAM_ON_X : HOME_BEAM_OFF_X) * 2;
-}
-static inline int hBeamY() {
-  return (hOnScene ? HOME_BEAM_ON_Y : HOME_BEAM_OFF_Y) * 2;
-}
-
-// 光尘 + 赐福火光：只动这两层，画完把包围盒交给局部重绘用
-static void hEffects(unsigned long now, float boost) {
-  const int bx = hBeamX(), by = hBeamY();
+// 光尘 + 赐福火光：只动这两层，画完把包围盒交给局部重绘用。
+// manT = 0 坐着（赐福被交互：更亮、更高），1 站着（暗一点、矮一点）。
+static void hEffects(unsigned long now, float boost, float manT) {
+  const int bx = HOME_BEAM_X * 2, by = HOME_BEAM_Y * 2;
+  const int lit = (int)(16.0f * (1.0f - 0.28f * manT) + 0.5f);     // 亮度档位 16 → 12
+  const int lift = (int)(6.0f * (1.0f - 0.55f * manT) + 0.5f);     // 光心离地高度 6 → 2.7
+  const int dustTop = (int)(H_DUST_TOP_SIT + (H_DUST_TOP_STAND - H_DUST_TOP_SIT) * manT);
   // 火光呼吸
   const float breath = 0.75f + 0.25f * sinf(now * 0.0011f);
-  const int k = (int)((1.5f + 1.5f * breath) * boost + 0.5f);
-  hAddEllipse(bx, by - 6, 26, 9, H_AMBER, k);
-  hAddEllipse(bx, by - 12, 12, 5, H_HOLY, k);
+  const int k = (int)((1.5f + 1.5f * breath) * boost * lit / 16.0f + 0.5f);
+  hAddEllipse(bx, by - lift, 26, 9, H_AMBER, k);
+  hAddEllipse(bx, by - lift - 6, 12, 5, H_HOLY, k);
   if (boost > 1.05f) {                                    // 切换闪光（半径必须留在包围盒内）
     const int r = 20 + (int)(12 * (boost - 1.0f) / 0.6f);
     hAddEllipse(bx, by, r, r / 4, H_SPECTRAL_HI, (int)((boost - 1.0f) * 10));
@@ -264,7 +279,7 @@ static void hEffects(unsigned long now, float boost) {
   // 光尘：加色点，压在亮天空上也只会更亮
   for (int i = 0; i < H_DUST_N; i++) {
     const float ph = fmodf(i / (float)H_DUST_N + now * 0.00009f, 1.0f);
-    const int y = by - (int)(ph * H_DUST_TOP);
+    const int y = by - (int)(ph * dustTop);
     const float spread = 6 + ph * 26;
     const int x = bx + (int)(sinf(i * 2.7f + ph * 7.5f + now * 0.0011f) * spread);
     const float fade = 1.0f - ph;
@@ -274,7 +289,7 @@ static void hEffects(unsigned long now, float boost) {
     hAddEllipse(x, y, r, r, (i % 4) ? H_DUST : H_HOLY, dk);
   }
   hBox[0] = bx - H_DUST_SPAN - 4;
-  hBox[1] = by - H_DUST_TOP - 4;
+  hBox[1] = by - dustTop - 4;
   hBox[2] = bx + H_DUST_SPAN + 4;
   hBox[3] = by + 12;
 }
@@ -291,7 +306,7 @@ static unsigned long hBoostAt = 0;
 static bool   hFullNext = true;             // 下一帧要整帧重画
 static int    hSt = -1;                     // 上一次状态，用来判断要不要闪一下
 static unsigned long hFrameAt = 0;
-static bool   hSkipMixOnce = false;         // 滑动合成要静态落点：这一次不做溶解
+static bool   hSnapOnce = false;            // 滑动合成要静态落点：这一次直接落地，不播过渡
 
 #include "../../FixedPageLayout.h"
 // 固定位置：音乐在左、导航居中、天气在右；降雨在天气上方、预警在下方。
@@ -333,14 +348,11 @@ static void hDrawInfo() {
   printCentered("TAP TO CLOSE", CX, 350, 1, 0x4208);
 }
 
-// 整帧：画面 → 赐福火光与光尘 → 浮层
+// 整帧：画面 → 马粒子 → 赐福火光与光尘 → 浮层
 static void hDrawFull(unsigned long now) {
-  if (hMixing) {
-    hMixScene(hMixT);                    // v2.1 进度由 animateCat 维护，可正可反
-  } else {
-    hFullScene();
-  }
-  hEffects(now, hBoost);
+  hScene();
+  hHorseSparks(hHrsProgress(hT));          // 两端它自己会跳过，这里不再判一次
+  hEffects(now, hBoost, hManProgress(hT));
   if (hInfoOn) hDrawInfo();
 }
 
@@ -354,40 +366,34 @@ void drawWaiting(int st) {
   hFullNext = true;
   const bool changed = hSt >= 0 && hSt != st;
   hSt = st;
-  const bool target = (st == WAIT_READY);
-  // v2.1 过渡状态机（三种情况互斥，不再有“从上一张目标图重来”的跳变）：
-  //   1. 滑动落点 hSkipMixOnce：必须是一张静态目标图，直接落地，不参与过渡；
-  //   2. 正在过渡：目标没变就继续推进（+1），目标改回起点图就原路退回（-1）；
-  //   3. 没在过渡且目标与屏上不同：从当前这张图开始新的过渡。
-  // hOnScene 在过渡期间仍表示“终点图”（hMixScene 要按它取像素），退回到 0 时才归位。
-  if (hSkipMixOnce) {
-    hSkipMixOnce = false;
-    hMixing = false;
-    hMixT = 0;
-    hMixDir = 1;
-    hMixFromOn = target;
-    hOnScene = target;
-  } else if (hMixing) {
-    hMixDir = (target == hOnScene) ? 1 : -1;
-  } else if (target != hOnScene) {
-    hMixFromOn = hOnScene;
-    hOnScene = target;
-    hMixT = 0;
-    hMixDir = 1;
-    hMixing = true;
-    hMixAt = millis();
+  const float target = (st == WAIT_READY) ? 1.0f : 0.0f;
+  // 进度状态机（三种情况互斥）：
+  //   1. 滑动落点 hSnapOnce：必须是一张静态目标图，直接落地；
+  //   2. 正在动：目标没变就继续推进，目标改回去就原路退回——画面从此刻的实际进度接着走；
+  //   3. 没在动且目标与屏上不同：朝目标开始走。
+  // 人站 / 马在 与 hT 的关系只由 hManProgress / hHrsProgress 决定，反向走自然就是
+  // “马先散、人后坐”。
+  if (hSnapOnce) {
+    hSnapOnce = false;
+    hDir = 0;
+    hT = target;
+  } else if (hDir != 0) {
+    if ((hDir > 0) != (target > 0.5f)) { hDir = -hDir; hTAt = millis(); }   // v2.2 掉头时重取时基
+  } else if (fabsf(hT - target) > 0.001f) {
+    hDir = (target > hT) ? 1 : -1;
+    hTAt = millis();
   }
   if (changed) {                                     // 换状态：赐福处闪一下
     hBoost = 1.6f;
     hBoostAt = millis();
-  } else if (!hMixing) {
+  } else if (hDir == 0) {
     hBoost = 1.0f;
   }
   hInfoOn = false;
   hFrameAt = millis();
 #if DEBUG_SERIAL
-  Serial.printf("HOME st=%d changed=%d scene=%d mix=%d page=%d on=%d sliding=%d\n",
-                st, (int)changed, (int)hOnScene, (int)hMixing, page, (int)onWaitScreen, (int)sliding);
+  Serial.printf("HOME st=%d changed=%d t=%.2f dir=%d page=%d on=%d sliding=%d\n",
+                st, (int)changed, hT, (int)hDir, page, (int)onWaitScreen, (int)sliding);
 #endif
   hDrawFull(hFrameAt);
   hFullNext = false;                                 // 这一帧已经是整帧，别让下一帧再整屏重画
@@ -440,26 +446,25 @@ void animateCat() {
     return;
   }
   if (hInfoOn && !catForce) return;                  // 浮层开着：冻住背景动画，只等分钟变
-  if (hMixing) {                                     // v2.1 按时间推进，方向可正可反
-    unsigned long dt = now - hMixAt;
-    hMixAt = now;
+  if (hDir != 0) {                                   // 按时间推进，方向可正可反
+    unsigned long dt = now - hTAt;
+    hTAt = now;
     if (dt > 100) dt = 100;                          // 浮层冻住 / 卡过帧：别一下跳到对面
-    hMixT += hMixDir * (float)dt / (float)HOME_MIX_MS;
-    if (hMixT >= 1.0f) {                             // 到终点图：整帧收尾
-      hMixT = 1.0f;
-      hMixing = false;
+    hT += hDir * (float)dt / (float)HOME_SWITCH_MS;
+    if (hT >= 1.0f) {                                // 到已连接：整帧收尾
+      hT = 1.0f;
+      hDir = 0;
       hFullNext = true;
-      catForce = true;                               // 别让下面的 gap 把收尾帧推迟
-    } else if (hMixT <= 0.0f) {                      // 原路退回起点图：把锚点也归位
-      hMixT = 0.0f;
-      hMixing = false;
-      hOnScene = hMixFromOn;
+      catForce = true;
+    } else if (hT <= 0.0f) {                         // 退回到未连接
+      hT = 0.0f;
+      hDir = 0;
       hFullNext = true;
       catForce = true;
     }
   }
-  const bool full = hFullNext || hMixing;
-  const int gap = hMixing ? 33 : (hBoost > 1.0f ? 60 : HOME_FRAME_MS);
+  const bool full = hFullNext || hDir != 0;
+  const int gap = hDir != 0 ? 33 : (hBoost > 1.0f ? 60 : HOME_FRAME_MS);
   if (!catForce && now - hFrameAt < gap) return;
   catForce = false;
   hFrameAt = now;
@@ -472,7 +477,7 @@ void animateCat() {
     hDrawFull(now);
   } else {
     hRestore(hBox[0], hBox[1], hBox[2], hBox[3]);
-    hEffects(now, hBoost);
+    hEffects(now, hBoost, hManProgress(hT));
   }
   needFlush = true;
   frameIsMap = false;

@@ -5,7 +5,7 @@ task_root="${0:A:h}"
 task_check=0
 task_full=0
 task_port=""
-task_version="2.0.0"
+task_version="2.2.0"
 finish() {
   local task_code="$1"
   if [[ -t 0 && "$task_check" == 0 ]]; then

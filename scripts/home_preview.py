@@ -4,6 +4,9 @@
 几何、配色、绘制顺序必须与 src/pages/HomePage.h 保持一致；
 画面素材从 resources/HomeSprites.h 里读，和固件同一份数据。
 输出到 scripts/preview/*.png
+
+v2.2 起切换不再是整屏溶解：t=0 是独坐、t=1 是起身牵马，中间只有人和马两块在变，
+按 t 出几帧就能看出背景是不是真的没动——这正是要验的东西。
 """
 import math
 import re
@@ -18,6 +21,9 @@ H_AMBER = 0xFD46
 H_HOLY = 0xFE90
 H_DUST = 0xFDEB
 H_SPECTRAL_HI = 0xEFFF
+H_SPARK_HI = 0x8E5F
+H_SPARK = 0x3BDB
+H_SPARK_LO = 0x19F1
 H_CARD = 0x10A3
 H_CARD_ED = 0x39E7
 C_WHITE = 0xFFFF
@@ -43,36 +49,33 @@ def _hp(name):
     return int(re.search(rf"#define\s+{name}\s+(-?\d+)", _HP).group(1))
 
 
-def _grab8(name):
-    w = _num(f"{name}_W")
-    h = _num(f"{name}_H")
-    seg = _HDR[_HDR.index(f"{name}_PAL[256]"):]
-    pal = [int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]{4})", seg[:seg.index("};")])]
-    body = _HDR[_HDR.index(f"{name}_BITS["):]
+def _pal():
+    seg = _HDR[_HDR.index("SCENE_PAL[256]"):]
+    return [int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]{4})", seg[:seg.index("};")])]
+
+
+def _bits(name):
+    body = _HDR[_HDR.index(f"{name}["):]
     body = body[body.index("{") + 1:body.index("};")]
     data = bytes(int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]{2})", body))
-    img = Image.new("L", (w, h))
+    img = Image.new("L", (SCENE_W, SCENE_H))
     img.putdata(list(data))
-    return img, pal
+    return img
 
 
-_OFF, _OPAL = _grab8("SCENE_OFF")
-_ON, _NPAL = _grab8("SCENE_ON")
-BEAM_OFF = (_num("HOME_BEAM_OFF_X"), _num("HOME_BEAM_OFF_Y"))
-BEAM_ON = (_num("HOME_BEAM_ON_X"), _num("HOME_BEAM_ON_Y"))
+SCENE_W = _num("SCENE_W")
+SCENE_H = _num("SCENE_H")
+PAL = _pal()
+OFF = _bits("SCENE_OFF_BITS")
+ON = _bits("SCENE_ON_BITS")
+PTS = [int(v) for v in re.findall(r"\d+", _HDR[_HDR.index("HOME_PTS["):].split("{")[1].split("};")[0])]
 
-
-def base_image(use_on):
-    """取一张完整画面，2x 放大到 466。use_on 为真取“已连接”那张。"""
-    src, pal = (_ON, _NPAL) if use_on else (_OFF, _OPAL)
-    w, h = src.size
-    spx = src.load()
-    img = Image.new("RGB", (w, h))
-    px = img.load()
-    for y in range(h):
-        for x in range(w):
-            px[x, y] = rgb565(pal[spx[x, y]])
-    return img.resize((W, H), Image.NEAREST)
+BEAM = (_num("HOME_BEAM_X"), _num("HOME_BEAM_Y"))
+MAN = (_num("HOME_MAN_X0"), _num("HOME_MAN_X1"), _num("HOME_MAN_Y0"), _num("HOME_MAN_Y1"))
+HRS = (_num("HOME_HRS_X0"), _num("HOME_HRS_X1"), _num("HOME_HRS_Y0"), _num("HOME_HRS_Y1"))
+DUST_TOP_SIT = _hp("H_DUST_TOP_SIT")
+DUST_TOP_STAND = _hp("H_DUST_TOP_STAND")
+DUST_N = _hp("H_DUST_N")
 
 
 def hnoise(x, y):
@@ -81,52 +84,72 @@ def hnoise(x, y):
     v ^= v >> 13
     v = (v * 0x5BD1E995) & 0xFFFFFFFF
     v ^= v >> 15
-    return v & 255
+    return v
 
 
-def pal_diff(a, b):
-    """RGB565 两色的分量差之和，0~125。与固件 hPalDiff 一致。"""
-    d = abs(((a >> 11) & 31) - ((b >> 11) & 31))
-    e = abs(((a >> 5) & 63) - ((b >> 5) & 63))
-    f = abs((a & 31) - (b & 31))
-    return d + e + f
+def man_progress(t):
+    v = t / 0.55
+    return 0.0 if v < 0 else (1.0 if v > 1 else v)
 
 
-DUST_TOP = _hp("H_DUST_TOP")     # 光尘上升行程
-DUST_N = _hp("H_DUST_N")         # 光尘数量
-MIX_WMAX = _hp("MIX_WMAX")       # 溶解权重上限
-MIX_WMIN = _hp("MIX_WMIN")       # 溶解权重下限
-# 马在“已连接”那张里的位置（233 尺度），与固件 H_HORSE_* 同一来源
-HORSE = (_hp("H_HORSE_CX"), _hp("H_HORSE_CY"), _hp("H_HORSE_RX"), _hp("H_HORSE_RY"))
+def hrs_progress(t):
+    v = (t - 0.25) / 0.75
+    return 0.0 if v < 0 else (1.0 if v > 1 else v)
 
 
-def mix_image(t):
-    """状态切换的抖动溶解（与固件 hMixScene 同一套公式）。
+def horse_order(x, y):
+    from_bottom = (HRS[3] - y) * 128 // (HRS[3] - HRS[2])
+    return 1 + (hnoise(x, y) & 127) + from_bottom
 
-    每个像素有一个“起翻时刻”：权重越高越早，n 是它在这个区间里的抖动位置。
-    两图差得多的像素（马、站起来的人）先翻先闪；本来一样的地方（火、天空）最后才翻，
-    翻过去也看不出来。注意整屏都会闪，不是只有马那一块。
-    """
-    k = int(t * 256)
-    w, h = _OFF.size
-    opx, npx = _OFF.load(), _ON.load()
-    img = Image.new("RGB", (w, h))
+
+MAN_BAND = _hp("H_MAN_BAND")
+
+
+def stood(x, y, man_line):
+    """与固件 hStood 一致：扫描线附近是一条噪声过渡带，不是一刀切。"""
+    d = y - man_line
+    if d >= MAN_BAND:
+        return True
+    if d <= -MAN_BAND:
+        return False
+    th = (d + MAN_BAND) * 255 // (2 * MAN_BAND)
+    return (hnoise(x, y) & 255) < th
+
+
+def man_line_of(man_t):
+    span = MAN[3] - MAN[2] + 2 * MAN_BAND
+    return MAN[3] + MAN_BAND - int(man_t * span + 0.5)
+
+
+def scene_image(t):
+    """与固件 hScene 同一套判定：背景两态一样，只有人和马按进度换。"""
+    man_t = man_progress(t)
+    hrs_t = hrs_progress(t)
+    man_line = man_line_of(man_t)
+    hrs_k = int(hrs_t * 256)
+    opx, npx = OFF.load(), ON.load()
+    img = Image.new("RGB", OFF.size)
     px = img.load()
-    for y in range(h):
-        for x in range(w):
-            ca, cb = _OPAL[opx[x, y]], _NPAL[npx[x, y]]
-            hx = (x - HORSE[0]) / HORSE[2]
-            hy = (y - HORSE[1]) / HORSE[3]
-            q = hx * hx + hy * hy
-            wgt = pal_diff(ca, cb) + (int(28 * (1 - q)) if q < 1 else 0)
-            if wgt > MIX_WMAX:
-                wgt = MIX_WMAX
-            speed = (MIX_WMIN + wgt) * 256 // (MIX_WMIN + MIX_WMAX)
-            start = max(0, 255 - speed * (255 - hnoise(x, y)) // 255)
-            c = cb if k > start else ca
-            if k > 0 and start >= k and start - k < 10 and wgt > 18:
-                c = H_HOLY if (x ^ y) & 1 else H_AMBER
-            px[x, y] = rgb565(c)
+    for sy in range(OFF.height):
+        man_row = MAN[2] <= sy < MAN[3]
+        hrs_row = HRS[2] <= sy < HRS[3]
+        for sx in range(OFF.width):
+            a, b = opx[sx, sy], npx[sx, sy]
+            if a == b:
+                idx = b
+                px[sx, sy] = rgb565(PAL[idx])
+                continue
+            in_man = man_row and MAN[0] <= sx < MAN[1]
+            in_hrs = hrs_row and HRS[0] <= sx < HRS[1]
+            if in_man and in_hrs:      # 马头右缘与人手相连：两边都到位才翻
+                idx = b if (stood(sx, sy, man_line) and horse_order(sx, sy) <= hrs_k) else a
+            elif in_man:
+                idx = b if stood(sx, sy, man_line) else a
+            elif in_hrs:
+                idx = b if horse_order(sx, sy) <= hrs_k else a
+            else:
+                idx = b
+            px[sx, sy] = rgb565(PAL[idx])
     return img.resize((W, H), Image.NEAREST)
 
 
@@ -135,16 +158,9 @@ class Scene:
         self.img = None
         self.d = None
 
-    def load(self, use_on):
-        self.img = base_image(use_on)
+    def load(self, t):
+        self.img = scene_image(t)
         self.d = ImageDraw.Draw(self.img)
-
-    def load_mix(self, t):
-        self.img = mix_image(t)
-        self.d = ImageDraw.Draw(self.img)
-
-    def px(self):
-        return self.img.load()
 
     def add_span(self, x, y, w, c, k):
         if k <= 0 or w <= 0 or y < 0 or y >= H:
@@ -177,37 +193,51 @@ class Scene:
         self.d.ellipse([x - r, y - r, x + r, y + r], fill=rgb565(c))
 
 
-def beam(use_on):
-    """固件 hBeamX/hBeamY 按 hOnScene 直接取一张的锚点，不做插值——这里跟它一致。"""
-    bx, by = BEAM_ON if use_on else BEAM_OFF
-    return bx * 2, by * 2
-
-
-def dust(s, now, use_on, boost=1.0):
-    """光尘：加色点，跟固件 hEffects 同一套参数。"""
-    bx, by = beam(use_on)
-    for i in range(DUST_N):
-        ph = math.fmod(i / DUST_N + now * 0.00009, 1.0)
-        y = by - int(ph * DUST_TOP)
-        spread = 6 + ph * 26
-        x = bx + int(math.sin(i * 2.7 + ph * 7.5 + now * 0.0011) * spread)
-        fade = 1 - ph
-        k = int(7 * fade * fade * boost)
-        if k <= 0:
+def sparks(s, hrs_t):
+    """马身上的蓝粒子：与固件 hHorseSparks 同一套参数。"""
+    if hrs_t <= 0.02 or hrs_t >= 0.97:
+        return
+    wgt = 1.0 - abs(2.0 * hrs_t - 1.0)
+    away = (1.0 - hrs_t) ** 2
+    kmax = int(26.0 * wgt) + 4
+    for i in range(len(PTS) // 2):
+        tx, ty = PTS[i * 2], PTS[i * 2 + 1]
+        n = hnoise(i * 29 + 7, i * 13 + 3)
+        dx = (n & 63) - 32
+        dy = ((n >> 6) & 63) - 40
+        x = tx + int(dx * away * 1.1)
+        y = ty + int(dy * away * 1.1)
+        if not (0 <= x < SCENE_W and 0 <= y < SCENE_H):
             continue
-        r = 2 if ph < 0.3 else 1
-        s.add_ellipse(x, y, r, r, H_DUST if i % 4 else H_HOLY, k)
+        c = H_SPARK_HI if i % 3 == 0 else (H_SPARK if i % 3 == 1 else H_SPARK_LO)
+        r = 2 if i % 4 == 0 else 1
+        s.add_ellipse(x * 2, y * 2, r, r, c, kmax)
 
 
-def flare(s, now, use_on, boost=1.0):
-    bx, by = beam(use_on)
+def ground(s, now, boost, man_t):
+    """火光 + 光尘：亮度、光心高度、光尘行程都随姿态变。"""
+    bx, by = BEAM[0] * 2, BEAM[1] * 2
+    lit = int(16.0 * (1.0 - 0.28 * man_t) + 0.5)
+    lift = int(6.0 * (1.0 - 0.55 * man_t) + 0.5)
+    dust_top = int(DUST_TOP_SIT + (DUST_TOP_STAND - DUST_TOP_SIT) * man_t)
     breath = 0.75 + 0.25 * math.sin(now * 0.0011)
-    k = int((1.5 + 1.5 * breath) * boost + 0.5)
-    s.add_ellipse(bx, by - 6, 26, 9, H_AMBER, k)
-    s.add_ellipse(bx, by - 12, 12, 5, H_HOLY, k)
+    k = int((1.5 + 1.5 * breath) * boost * lit / 16.0 + 0.5)
+    s.add_ellipse(bx, by - lift, 26, 9, H_AMBER, k)
+    s.add_ellipse(bx, by - lift - 6, 12, 5, H_HOLY, k)
     if boost > 1.05:
         r = 20 + int(12 * (boost - 1.0) / 0.6)
         s.add_ellipse(bx, by, r, r // 4, H_SPECTRAL_HI, int((boost - 1.0) * 10))
+    for i in range(DUST_N):
+        ph = math.fmod(i / DUST_N + now * 0.00009, 1.0)
+        y = by - int(ph * dust_top)
+        spread = 6 + ph * 26
+        x = bx + int(math.sin(i * 2.7 + ph * 7.5 + now * 0.0011) * spread)
+        fade = 1 - ph
+        dk = int(7 * fade * fade * boost)
+        if dk <= 0:
+            continue
+        r = 2 if ph < 0.3 else 1
+        s.add_ellipse(x, y, r, r, H_DUST if i % 4 else H_HOLY, dk)
 
 
 def centered(s, text, y, size, color):
@@ -225,7 +255,7 @@ def info_card(s):
     centered(s, "LINKED", 266, 2, C_GREEN)
     centered(s, "MotoNav-3F2A", 290, 2, C_GREY)
     centered(s, "BAT 87%", 312, 2, C_GREY)
-    centered(s, "v2.0.0  40MHz", 336, 1, C_GREY)
+    centered(s, "v2.2.0  40MHz", 336, 1, C_GREY)
     centered(s, "TAP TO CLOSE", 350, 1, 0x4208)
 
 
@@ -237,19 +267,14 @@ def crop(s):
     return out
 
 
-def render(mode, now=1428):
-    if mode == "nolink":
-        mix, boost = 0.0, 1.0
-    elif mode == "summon":                    # 刚切到已连接：火还没闪完
-        mix, boost = 1.0, 1.45
-    else:                                     # ready / info
-        mix, boost = 1.0, 1.0
+def render(t, now=1428, boost=1.0, info=False):
     s = Scene()
-    use_on = mix >= 0.5
-    s.load(use_on)
-    flare(s, now, use_on, boost)
-    dust(s, now, use_on, boost)
-    if mode == "info":
+    s.load(t)
+    hrs_t = hrs_progress(t)
+    if 0.02 < hrs_t < 0.97:
+        sparks(s, hrs_t)
+    ground(s, now, boost, man_progress(t))
+    if info:
         info_card(s)
     return crop(s)
 
@@ -257,13 +282,25 @@ def render(mode, now=1428):
 if __name__ == "__main__":
     dest = Path(__file__).resolve().parent / "preview"
     dest.mkdir(exist_ok=True)
-    for mode in ("nolink", "summon", "ready", "info"):
-        render(mode).save(dest / f"home_{mode}.png")
-        print(dest / f"home_{mode}.png")
-    for t in (0.25, 0.5, 0.75):
-        s = Scene()
-        s.load_mix(t)
-        flare(s, 1428, t >= 0.5, 1.3)
-        dust(s, 1428, t >= 0.5, 1.3)
-        crop(s).save(dest / f"home_mix{int(t*100)}.png")
-        print(dest / f"home_mix{int(t*100)}.png")
+    shots = [("nolink", 0.0, 1.0, False), ("ready", 1.0, 1.0, False),
+             ("info", 1.0, 1.0, True), ("summon", 1.0, 1.45, False)]
+    for name, t, boost, info in shots:
+        render(t, boost=boost, info=info).save(dest / f"home_{name}.png")
+        print(dest / f"home_{name}.png")
+    for t in (0.2, 0.35, 0.5, 0.65, 0.8):
+        render(t, now=1428, boost=1.3).save(dest / f"home_t{int(t*100):02d}.png")
+        print(dest / f"home_t{int(t*100):02d}.png")
+    # 过渡期间背景是否真的没动：拿 t=0 和 t=1 逐像素比，人马矩形外必须 0 差异
+    a, b = scene_image(0.0).load(), scene_image(1.0).load()
+    bad = 0
+    for y in range(H):
+        for x in range(W):
+            if a[x, y] != b[x, y]:
+                sx, sy = x // 2, y // 2
+                if not ((MAN[0] <= sx < MAN[1] and MAN[2] <= sy < MAN[3]) or
+                        (HRS[0] <= sx < HRS[1] and HRS[2] <= sy < HRS[3])):
+                    bad += 1
+    if bad:
+        raise SystemExit(f"背景校验失败：两态在人马矩形外有 {bad} 个像素不同，"
+                         f"说明素材没对齐或矩形常量改错了")
+    print("背景校验：两态在人马矩形外差异 0 像素")
