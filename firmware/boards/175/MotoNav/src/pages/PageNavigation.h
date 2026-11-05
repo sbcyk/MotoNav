@@ -97,7 +97,7 @@ void renderPage(int p, int detail, bool staticHome) {
   else if (inNav) drawNavFrame();
   else {
     hSkipMixOnce = staticHome;
-    drawWaiting(bleConnected ? WAIT_READY : WAIT_NOLINK);
+    drawWaiting(homeLinkReady() ? WAIT_READY : WAIT_NOLINK);   // v2.1 与主循环同一判定
     hSkipMixOnce = false;                    // 万一 drawWaiting 早退，别把标志留给下一帧
   }
   page = keep; wxDetail = keepDetail; sliding = ks;
@@ -295,7 +295,10 @@ void dragEnd() {
 void dragAbort() {
   if (!dragging) return;
   sliding = false; dragging = false;
-  if (page == 2) musicDirty = true; else if (page == 1) wxDirty = true; else if (inNav) navDirty = true;
+  if (page == 2) musicDirty = true;
+  else if (page == 1) wxDirty = true;
+  else if (inNav) navDirty = true;
+  else if (onWaitScreen) { catForce = true; hFullNext = true; }   // v2.1 首页补一帧，别停在半张合成图上
 }
 
 // 将触摸点换算到画布坐标，按钮使用较大的点按范围。

@@ -155,9 +155,14 @@ static void hFullScene() {
 // 马那块再加一份权重，所以马先散；天空、地面两图差得小，翻得晚，翻过去也不显眼。
 // 锋面上“马上要翻”的像素点成金色，读起来就是整屏化开成光点、再重新聚成画面。
 // 不用逐像素混色：混色要算三次乘法，抖动换像素只是一次比较，像素风也更耐这种质变。
+// v2.1 过渡改为“可反向推进”：记进度 hMixT（0 = 起点图，1 = 终点图）而不是开始时刻。
+// 快速连上又断开时，目标会中途改回来，这时只把方向改成 -1，像素按各自的翻转时刻
+// 原路退回起点图——画面从屏幕上这一刻的实际混合态接着走，不会跳回整张图重来。
 static bool hMixFromOn = false;            // 过渡起点是哪张
 static bool hMixing = false;
-static unsigned long hMixAt = 0;
+static float hMixT = 0;                    // 当前进度：0 = 起点图，1 = 终点图
+static int8_t hMixDir = 1;                 // +1 朝终点推进，-1 原路退回
+static unsigned long hMixAt = 0;           // 上一次推进的时刻（算 dt）
 
 // 稳定的伪随机阈值（按源像素坐标），同一像素每帧都是同一个值，才能“一个一个翻”而不是闪噪
 static inline uint32_t hNoise(int x, int y) {
@@ -331,8 +336,7 @@ static void hDrawInfo() {
 // 整帧：画面 → 赐福火光与光尘 → 浮层
 static void hDrawFull(unsigned long now) {
   if (hMixing) {
-    const float t = (now - hMixAt) / (float)HOME_MIX_MS;
-    hMixScene(t >= 1.0f ? 1.0f : t);
+    hMixScene(hMixT);                    // v2.1 进度由 animateCat 维护，可正可反
   } else {
     hFullScene();
   }
@@ -351,20 +355,27 @@ void drawWaiting(int st) {
   const bool changed = hSt >= 0 && hSt != st;
   hSt = st;
   const bool target = (st == WAIT_READY);
-  // 滑动合成那一路要的是一张静态落点图：它会在滑动期间反复被采样，
-  // 若这里是 t=0 的旧画面，滑到位后才会跳到半溶解（见 PageNavigation.h renderPage）。
-  const bool wantMix = changed && hOnScene != target && !hSkipMixOnce;
-  hSkipMixOnce = false;
-  if (wantMix) {                                     // 换状态：从当前这张溶解过去
+  // v2.1 过渡状态机（三种情况互斥，不再有“从上一张目标图重来”的跳变）：
+  //   1. 滑动落点 hSkipMixOnce：必须是一张静态目标图，直接落地，不参与过渡；
+  //   2. 正在过渡：目标没变就继续推进（+1），目标改回起点图就原路退回（-1）；
+  //   3. 没在过渡且目标与屏上不同：从当前这张图开始新的过渡。
+  // hOnScene 在过渡期间仍表示“终点图”（hMixScene 要按它取像素），退回到 0 时才归位。
+  if (hSkipMixOnce) {
+    hSkipMixOnce = false;
+    hMixing = false;
+    hMixT = 0;
+    hMixDir = 1;
+    hMixFromOn = target;
+    hOnScene = target;
+  } else if (hMixing) {
+    hMixDir = (target == hOnScene) ? 1 : -1;
+  } else if (target != hOnScene) {
     hMixFromOn = hOnScene;
-    hOnScene = target;                               // 锚点与 hPix 立即按新图算
+    hOnScene = target;
+    hMixT = 0;
+    hMixDir = 1;
     hMixing = true;
     hMixAt = millis();
-  } else if (changed) {                              // 切回原来那张 / 滑动落点：直接定画面
-    hMixing = false;
-    hOnScene = target;
-  } else if (!hMixing) {
-    hOnScene = target;
   }
   if (changed) {                                     // 换状态：赐福处闪一下
     hBoost = 1.6f;
@@ -429,10 +440,23 @@ void animateCat() {
     return;
   }
   if (hInfoOn && !catForce) return;                  // 浮层开着：冻住背景动画，只等分钟变
-  if (hMixing && now - hMixAt >= HOME_MIX_MS) {      // 溶解结束：立刻整帧刷一次
-    hMixing = false;
-    hFullNext = true;
-    catForce = true;                                 // 别让下面的 gap 把收尾帧推迟
+  if (hMixing) {                                     // v2.1 按时间推进，方向可正可反
+    unsigned long dt = now - hMixAt;
+    hMixAt = now;
+    if (dt > 100) dt = 100;                          // 浮层冻住 / 卡过帧：别一下跳到对面
+    hMixT += hMixDir * (float)dt / (float)HOME_MIX_MS;
+    if (hMixT >= 1.0f) {                             // 到终点图：整帧收尾
+      hMixT = 1.0f;
+      hMixing = false;
+      hFullNext = true;
+      catForce = true;                               // 别让下面的 gap 把收尾帧推迟
+    } else if (hMixT <= 0.0f) {                      // 原路退回起点图：把锚点也归位
+      hMixT = 0.0f;
+      hMixing = false;
+      hOnScene = hMixFromOn;
+      hFullNext = true;
+      catForce = true;
+    }
   }
   const bool full = hFullNext || hMixing;
   const int gap = hMixing ? 33 : (hBoost > 1.0f ? 60 : HOME_FRAME_MS);

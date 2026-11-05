@@ -9,6 +9,13 @@ int bondCount() {
 }
 bool pairingAllowed() { return millis() < PAIR_WINDOW_MS || bondCount() == 0; }
 
+// “连上了没有”只留这一个判定（v2.1）：主循环的状态触发、首页画面、滑动落点、
+// 侧键回首页、状态栏小绿点全走它。以前主循环用 bleConnected && bleAuthed，
+// 而 renderPage / 按键 / 状态灯只看 bleConnected，两套标准在认证没完成时会打架：
+// 事件不触发、翻页却能画出另一张图，于是“卡住，换页才刷新”。
+// 语义仍是 v6.5 的“通过配对验证才算连上”。
+bool homeLinkReady() { return bleConnected && bleAuthed; }   // v2.1
+
 class SecCB : public BLESecurityCallbacks {
   uint32_t onPassKeyRequest() { return 0; }
   // 圆屏要显示配对码（每次配对随机生成）：只在允许配对的时间里真的显示出来

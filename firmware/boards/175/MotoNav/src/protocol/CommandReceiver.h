@@ -126,7 +126,9 @@ void handleText(const String &m) {
     return;
   }
   if (m == "P") return;                                 // 心跳
-  if (m == "C") { stopArriveFx(); progReset(); resetNavState(); drawWaiting(WAIT_READY); return; }
+  // v2.1 清屏只清导航状态，画面按真实连接状态画：以前写死 WAIT_READY，重连时手机
+  // 必发这条（BleLink 会补发 lastState），断着也画成“已连接”，要翻页才纠正。
+  if (m == "C") { stopArriveFx(); progReset(); resetNavState(); drawWaiting(homeLinkReady() ? WAIT_READY : WAIT_NOLINK); return; }
   if (m == "#NA,1") {
     stopArriveFx();progReset();resetNavState();navArrivedHold=true;inNav=true;navDir="A";
     navDirty=true;return;

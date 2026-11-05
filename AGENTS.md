@@ -137,7 +137,7 @@ firmware/
 
 | 文件 | 内容 |
 |---|---|
-| `src/pages/HomePage.h` | 骑行前默认界面：像素风黄昏赐福，两幅画面存在 `resources/HomeSprites.h`（8bpp 索引、233×233、各约 54KB 在 flash，显示按 2× 放大）：未连接=褪色者独坐赐福旁（远处废墟与远山），已连接=托雷特站在他身旁、他站着牵缰。两幅取自不同参考图，取景宽度按“主体一样大”定（512 / 683），赐福火落在同一个屏幕位置。连上 / 断开走抖动溶解过渡（600ms，按两图差异加权、马那块权重最高、锋面点成金色光点）并在赐福处闪一下（320ms 加色），光尘从火光升起。绘制分整帧（进页面 / 浮层）、溶解（状态切换 600ms）与局部（静置 10fps 只擦光尘那一小块），推屏走同步单缓冲；所有绘制裁到圆内（`hCircleSpan`）。点屏幕开信息浮层，6 秒自动收起。三态 `WAIT_READY / WAIT_NOLINK / WAIT_LOST` |
+| `src/pages/HomePage.h` | 骑行前默认界面：像素风黄昏赐福，两幅画面存在 `resources/HomeSprites.h`（8bpp 索引、233×233、各约 54KB 在 flash，显示按 2× 放大）：未连接=褪色者独坐赐福旁（远处废墟与远山），已连接=托雷特站在他身旁、他站着牵缰。两幅取自不同参考图，取景宽度按“主体一样大”定（512 / 683），赐福火落在同一个屏幕位置。连上 / 断开走抖动溶解过渡（600ms，按两图差异加权、马那块权重最高、锋面点成金色光点）并在赐福处闪一下（320ms 加色），光尘从火光升起。绘制分整帧（进页面 / 浮层）、溶解（状态切换 600ms）与局部（静置 10fps 只擦光尘那一小块），推屏走同步单缓冲；所有绘制裁到圆内（`hCircleSpan`）。点屏幕开信息浮层，6 秒自动收起。三态 `WAIT_READY / WAIT_NOLINK / WAIT_LOST`。**“连上没有”统一由 `homeLinkReady()`（`src/connectivity/Bluetooth.h`，= `bleConnected && bleAuthed`）判定**，主循环、`renderPage`、侧键回首页、状态栏小绿点、`#C` 共用，别再写裸的 `bleConnected`；溶解进度记在 `hMixT` + `hMixDir` 上，目标中途改回来时只把方向取反、原路退回；主循环每帧比对屏上状态与实际状态，切换被吞掉时下一帧自愈 |
 | `src/pages/NavigationPage.h` | 导航主界面 |
 | `src/pages/WeatherPage.h` | 天气页（第 2 页） |
 | `src/pages/IncomingCall.h` | 来电界面 + **`touchPoll()` 全部触摸逻辑** |

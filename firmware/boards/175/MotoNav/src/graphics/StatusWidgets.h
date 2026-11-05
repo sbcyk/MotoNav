@@ -27,7 +27,7 @@ void drawBattery(int x0, int y0, bool backing = false) {
 
 void drawStatus() {
   gfx->fillRect(CX - 9, 21, 9 + 14 + 24 + 2 + 5 + 18 + 4, 19, C_BLACK);   // v7.2 先擦掉旧的（只重画状态栏时用）
-  aaDisc(CX, 30, 7, bleConnected ? C_GREEN : C_GREY);
+  aaDisc(CX, 30, 7, homeLinkReady() ? C_GREEN : C_GREY);   // v2.1 与首页同一判定
   drawBattery(CX + 14, 24);                               // v6.8 电量（蓝牙小圆点右边）
   needFlush = true;
 }

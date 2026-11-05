@@ -55,10 +55,10 @@ static int btnRingIndex(int p) {
   return -1;
 }
 
-// 首页等待态。用 bleConnected 而不是 bleConnected && bleAuthed：renderPage() 在
-// 滑动路径里画首页用的就是这一个条件，两处必须一致，否则滑过去和直接重绘会显示不同画面。
+// 首页等待态。v2.1 起直接用 homeLinkReady()：主循环的状态触发、滑动落点、
+// 状态栏小绿点用的都是同一个判定，不需要再靠注释提醒两处保持一致。
 static int btnHomeWaitState() {
-  return bleConnected ? WAIT_READY : WAIT_NOLINK;
+  return homeLinkReady() ? WAIT_READY : WAIT_NOLINK;
 }
 
 // 复用拖拽换页的动画管线。slideCompose/slideCommit 读的是全局 drag* 状态，

@@ -193,7 +193,7 @@ void loop() {
   }
 #endif
   // 1. 连接状态变化（先处理）；v6.5 通过验证才算连上
-  bool conn = bleConnected && bleAuthed;
+  bool conn = homeLinkReady();                        // v2.1 与画面、状态灯同一判定
   if (conn != shownConn) {
     shownConn = conn;
     if (conn) {
@@ -302,6 +302,13 @@ void loop() {
 
   musicTick();
   weatherTick();                                       // v5.3 天气页
+  // v2.1 首页自愈：每帧比对“该显示的状态”和“屏上的状态”。连接切换的事件若被
+  // 浮层 / 拖动 / 认证时序吞掉（快开快关最容易），下一帧就补上，不用等用户翻页。
+  // WAIT_LOST 与 WAIT_NOLINK 画的是同一张未连接图，只看“是不是已连接”就不会互相覆盖。
+  if (page == 0 && !inNav && !callOn && !pairOn && !fxOn && !sliding && onWaitScreen) {
+    const bool linkNow = homeLinkReady();
+    if ((waitSt == WAIT_READY) != linkNow) drawWaiting(linkNow ? WAIT_READY : WAIT_NOLINK);
+  }
   if (inNav && navDirty && !fxOn && !callOn && !pairOn && page == 0 && !sliding) {
     drawNavFrame();
     navDirty = false;
