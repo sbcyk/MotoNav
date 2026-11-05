@@ -9,8 +9,9 @@
 //   · 赐福光随姿态变：坐火（坐着）亮而盛，未坐火（站着）暗一档、火苗小一号、粒子稀少。
 // v2.3 赐福分两档，读的是《黑暗之魂/艾尔登法环》那套规则：没坐下休息时赐福本身也发金光，
 // 只是弱——所以站着不是"灭掉"，是火苗小一圈、亮度档 16→9、闪烁粒子 10→5、光尘 20→10。
-// 素材里那根金色光柱是画进图里的（两态共用背景，见 v2.2），代码改不了它的高度；
-// 想让它变矮只能重做母版图，纯像素修补会在山体上留下灰块/黑烟。
+// 赐福光柱的高度也按状态分（坐火高、未坐火矮）：柱子本身画在素材里，出图时按
+// HOME_BEAM_* 那一带把上段用邻域扩散出的背景收掉，两态收得不一样，所以切换时
+// 这一带也要重绘（见 hScene 的 inBeam 分支）。
 // 绘制仍分整帧（进度推进 / 进页面 / 浮层）和局部（静置的光尘与火光）两种。
 // 推屏始终整屏一次；局部只擦上一帧特效那一小块再重画，静置时每帧只有几百个像素级操作。
 // 画面走同步推屏（单缓冲），局部更新才不会画到屏幕没在显示的那块缓冲上。
@@ -196,6 +197,7 @@ static void hScene() {
     const uint8_t *rn = SCENE_ON_BITS + (size_t)sy * SCENE_W;
     const bool manRow = (sy >= HOME_MAN_Y0 && sy < HOME_MAN_Y1);
     const bool hrsRow = (sy >= HOME_HRS_Y0 && sy < HOME_HRS_Y1);
+    const bool beamRow = (sy >= HOME_BEAM_Y0 && sy < HOME_BEAM_Y1);
     uint16_t *o0 = fb + (size_t)(sy * 2) * LCD_WIDTH + x0;
     uint16_t *o1 = o0 + LCD_WIDTH;
     for (int sx = x0 >> 1; sx < (x1 >> 1); sx++) {
@@ -206,6 +208,7 @@ static void hScene() {
       } else {
         const bool inMan = manRow && sx >= HOME_MAN_X0 && sx < HOME_MAN_X1;
         const bool inHrs = hrsRow && sx >= HOME_HRS_X0 && sx < HOME_HRS_X1;
+        const bool inBeam = beamRow && sx >= HOME_BEAM_X0 && sx < HOME_BEAM_X1;
         if (inMan && inHrs) {
           // 马头右缘和人手是连在一起的（母版里他正扶着马头），这块要两边都到位才翻，
           // 否则会出现“人已经站好、马头先于马身浮在半空”。
@@ -214,6 +217,9 @@ static void hScene() {
           idx = hStood(sx, sy, manLine) ? b : a;       // 人：扫描线往上推，下半身先站起来
         } else if (inHrs) {
           idx = (hHorseOrder(sx, sy) <= hrsK) ? b : a; // 马：按各自的显形时刻一个个翻
+        } else if (inBeam) {
+          // 柱高两态不同（坐火高、未坐火矮）：按噪声阈值随进度逐个翻，和起身一样不是一刀切
+          idx = ((int)(hNoise(sx, sy) & 255) < (int)(hT * 256.0f)) ? b : a;
         } else {
           idx = b;
         }

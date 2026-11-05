@@ -46,6 +46,104 @@ MAN_BOX = (74, 44, 134, 184)
 HORSE_BOX = (0, 24, 92, 184)
 N_PTS = 150                                 # 马身上的粒子落点数量
 
+# ---- 赐福光柱：两态柱高不同（v2.3）----
+# 柱子是画进母版的死像素，直接抹会留洞。这里的做法是：把柱带里的"光"像素圈出来，
+# 先用周围像素扩散出一层背景当底，再按竖向 ramp 把光混回去——往上逐渐只剩底。
+# 等于让光自己散进空气里，而不是拿块灰去填。
+BEAM_BAND = (138, 173, 18)                  # 柱带：x0, x1, 顶（源像素）；带内允许两态不同
+BEAM_FADE_OFF = (174, 96)                   # 坐火：y=174 以下不动，到 96 收完
+BEAM_FADE_ON = (174, 128)                   # 未坐火：收得更低，柱子更短
+BEAM_LIGHT = (22, 80)                       # 判定"光"的下限：r-b > 22 且 r > 80
+BEAM_THICK = 6                              # 竖直连续这么多像素才算"厚"（柱芯/光锥）；细线是光环，留着
+
+
+def smoothstep(a, b, v):
+    t = (v - a) / float(b - a)
+    t = 0.0 if t < 0 else (1.0 if t > 1 else t)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def beam_cut(img, y_start, y_end):
+    """把赐福光柱从 y_end 往上收掉，y_start 以下原样。
+
+    只压"厚"的东西：竖直连续 6 px 以上的暖色块（柱芯和光锥）才算要收的光，
+    光环那种 1~3 px 的细线一律留着——光环是赐福的形态，抹掉就不像赐福了。
+    厚块先按邻域扩散出一层背景当底，再按 ramp 混回原像素，等于让光散进空气里。
+    """
+    out = img.copy()
+    p = out.load()
+    x0, x1, y0 = BEAM_BAND
+    h, w = y_start - y0, x1 - x0
+    if h <= 0 or w <= 0:
+        return out
+
+    def light(c):
+        return c[0] - c[2] > BEAM_LIGHT[0] and c[0] > BEAM_LIGHT[1]
+
+    orig = [[p[x0 + i, y0 + j] for i in range(w)] for j in range(h)]
+    todo = [[False] * w for _ in range(h)]
+    for i in range(w):                                    # 逐列找竖直厚块
+        j = 0
+        while j < h:
+            if not light(orig[j][i]):
+                j += 1
+                continue
+            k = j
+            while k < h and light(orig[k][i]):
+                k += 1
+            if k - j >= BEAM_THICK:                       # 细线（光环、碎点）不动
+                for jj in range(j, k):
+                    todo[jj][i] = True
+            j = k
+    if not any(any(r) for r in todo):
+        return out
+    mask = [row[:] for row in todo]                       # 扩散会把 todo 吃掉，先留一份
+    bg = [[list(o) for o in row] for row in orig]
+    for _ in range(200):
+        nxt = [[False] * w for _ in range(h)]
+        moved = False
+        for j in range(h):
+            for i in range(w):
+                if not todo[j][i]:
+                    continue
+                acc = [0, 0, 0]
+                n = 0
+                for dj in (-1, 0, 1):
+                    for di in (-1, 0, 1):
+                        jj, ii = j + dj, i + di
+                        if (di or dj) and 0 <= jj < h and 0 <= ii < w and not todo[jj][ii]:
+                            c = bg[jj][ii]
+                            acc[0] += c[0]
+                            acc[1] += c[1]
+                            acc[2] += c[2]
+                            n += 1
+                if n:
+                    bg[j][i] = [acc[0] // n, acc[1] // n, acc[2] // n]
+                    moved = True
+                else:
+                    nxt[j][i] = True
+        todo = nxt
+        if not moved:
+            break
+    half = w * 0.5
+    for j in range(h):
+        y = y0 + j
+        v = smoothstep(y_end, y_start, y)                 # 越往上越小
+        for i in range(w):
+            if not mask[j][i]:
+                continue
+            # 横向软边：柱带最外 8 px 逐步不吃，免得带边留下一条直边
+            hf = 1.0 - smoothstep(half - 8.0, half, abs(i + 0.5 - half))
+            a = (1.0 - v) * hf
+            if a <= 0:
+                continue
+            o, b = orig[j][i], bg[j][i]
+            p[x0 + i, y] = (clamp(o[0] + (b[0] - o[0]) * a),
+                            clamp(o[1] + (b[1] - o[1]) * a),
+                            clamp(o[2] + (b[2] - o[2]) * a))
+    return out
+
+
 # 有序抖动而不是 Floyd-Steinberg：Bayer 的偏移只跟坐标有关，两张图同一坐标同色
 # 必得同一个索引，背景才可能逐像素相等。FS 依赖误差扩散，位置一变结果就变。
 BAYER4 = ((0, 8, 2, 10), (12, 4, 14, 6), (3, 11, 1, 9), (15, 7, 13, 5))
@@ -239,25 +337,29 @@ def main():
     mask = build_masks()
     off = build_off(master, empty, seated, mask)
     on = master
+    off = beam_cut(off, *BEAM_FADE_OFF)                   # v2.3 坐火：柱子最高
+    on = beam_cut(on, *BEAM_FADE_ON)                      # v2.3 未坐火：再短一截
 
     bx, by = beam_xy(on, 180)
     pts = horse_points(off, on, N_PTS)
 
     pal, q_off, q_on = shared_quantize(off, on)
 
-    # 背景必须真的对得上：两只图在人马矩形外同位置索引必须相等
+    # 背景必须真的对得上：两只图在人马矩形和柱带之外，同位置索引必须相等
     a, b = q_off.load(), q_on.load()
     bad = []
     for y in range(S):
         for x in range(S):
             if a[x, y] != b[x, y]:
                 inside = (HORSE_BOX[0] <= x < HORSE_BOX[2] and HORSE_BOX[1] <= y < HORSE_BOX[3]) or \
-                         (MAN_BOX[0] <= x < MAN_BOX[2] and MAN_BOX[1] <= y < MAN_BOX[3])
+                         (MAN_BOX[0] <= x < MAN_BOX[2] and MAN_BOX[1] <= y < MAN_BOX[3]) or \
+                         (BEAM_BAND[0] <= x < BEAM_BAND[1] and BEAM_BAND[2] <= y < BEAM_FADE_OFF[0])
                 if not inside:
                     bad.append((x, y))
     if bad:
         head = " ".join(f"({x},{y})" for x, y in bad[:8])
-        raise SystemExit(f"背景没对齐：人马矩形外有 {len(bad)} 个像素两态不同：{head}")
+        raise SystemExit(f"背景没对齐：人马矩形与柱带之外有 {len(bad)} 个像素两态不同：{head}")
+
 
     dest = root / "firmware/boards/175/MotoNav/resources/HomeSprites.h"
     body = [
@@ -267,6 +369,11 @@ def main():
         "// 所以状态切换时只重绘人和马那一块，背景一动不动。",
         f"#define HOME_BEAM_X {bx}",
         f"#define HOME_BEAM_Y {by}",
+        "// 赐福光柱带：柱高按状态不同（坐火高、未坐火矮），切换时这一块也要按状态重绘",
+        f"#define HOME_BEAM_X0 {BEAM_BAND[0]}",
+        f"#define HOME_BEAM_X1 {BEAM_BAND[1]}",
+        f"#define HOME_BEAM_Y0 {BEAM_BAND[2]}",
+        f"#define HOME_BEAM_Y1 {BEAM_FADE_OFF[0]}",
         "",
         "// 起身：人所在矩形，纵向扫描从 HOME_MAN_Y1 扫到 HOME_MAN_Y0",
         f"#define HOME_MAN_X0 {MAN_BOX[0]}",

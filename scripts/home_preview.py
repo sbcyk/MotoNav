@@ -71,6 +71,7 @@ ON = _bits("SCENE_ON_BITS")
 PTS = [int(v) for v in re.findall(r"\d+", _HDR[_HDR.index("HOME_PTS["):].split("{")[1].split("};")[0])]
 
 BEAM = (_num("HOME_BEAM_X"), _num("HOME_BEAM_Y"))
+BEAM_BOX = (_num("HOME_BEAM_X0"), _num("HOME_BEAM_Y0"), _num("HOME_BEAM_X1"), _num("HOME_BEAM_Y1"))
 MAN = (_num("HOME_MAN_X0"), _num("HOME_MAN_X1"), _num("HOME_MAN_Y0"), _num("HOME_MAN_Y1"))
 HRS = (_num("HOME_HRS_X0"), _num("HOME_HRS_X1"), _num("HOME_HRS_Y0"), _num("HOME_HRS_Y1"))
 DUST_TOP_SIT = _hp("H_DUST_TOP_SIT")
@@ -145,6 +146,7 @@ def scene_image(t):
     for sy in range(OFF.height):
         man_row = MAN[2] <= sy < MAN[3]
         hrs_row = HRS[2] <= sy < HRS[3]
+        beam_row = BEAM_BOX[1] <= sy < BEAM_BOX[3]
         for sx in range(OFF.width):
             a, b = opx[sx, sy], npx[sx, sy]
             if a == b:
@@ -153,12 +155,15 @@ def scene_image(t):
                 continue
             in_man = man_row and MAN[0] <= sx < MAN[1]
             in_hrs = hrs_row and HRS[0] <= sx < HRS[1]
+            in_beam = beam_row and BEAM_BOX[0] <= sx < BEAM_BOX[2]
             if in_man and in_hrs:      # 马头右缘与人手相连：两边都到位才翻
                 idx = b if (stood(sx, sy, man_line) and horse_order(sx, sy) <= hrs_k) else a
             elif in_man:
                 idx = b if stood(sx, sy, man_line) else a
             elif in_hrs:
                 idx = b if horse_order(sx, sy) <= hrs_k else a
+            elif in_beam:              # 柱高两态不同：按噪声阈值随进度逐个翻
+                idx = b if (hnoise(sx, sy) & 255) < int(t * 256) else a
             else:
                 idx = b
             px[sx, sy] = rgb565(PAL[idx])
@@ -226,7 +231,7 @@ def sparks(s, hrs_t):
         s.add_ellipse(x * 2, y * 2, r, r, c, kmax)
 
 
-def sparks(s, now, boost, man_t):
+def bless_sparks(s, now, boost, man_t):
     """赐福闪烁粒子：与固件 hBlessSparks 同一套参数（坐火多而亮，未坐火少而暗）。"""
     bx, by = BEAM[0] * 2, BEAM[1] * 2
     rest = man_t < 0.5
@@ -274,7 +279,7 @@ def ground(s, now, boost, man_t):
             continue
         r = 2 if ph < 0.3 else 1
         s.add_ellipse(x, y, r, r, H_DUST if i % 4 else H_HOLY, dk)
-    sparks(s, now, boost, man_t)
+    bless_sparks(s, now, boost, man_t)
 
 
 def centered(s, text, y, size, color):
@@ -335,7 +340,8 @@ if __name__ == "__main__":
             if a[x, y] != b[x, y]:
                 sx, sy = x // 2, y // 2
                 if not ((MAN[0] <= sx < MAN[1] and MAN[2] <= sy < MAN[3]) or
-                        (HRS[0] <= sx < HRS[1] and HRS[2] <= sy < HRS[3])):
+                        (HRS[0] <= sx < HRS[1] and HRS[2] <= sy < HRS[3]) or
+                        (BEAM_BOX[0] <= sx < BEAM_BOX[2] and BEAM_BOX[1] <= sy < BEAM_BOX[3])):
                     bad += 1
     if bad:
         raise SystemExit(f"背景校验失败：两态在人马矩形外有 {bad} 个像素不同，"
