@@ -63,11 +63,13 @@
 
 规则：
 
-- `fw` = firmware 固件，`ios` = iPhone App。前缀标模块，因为两者版本号是**两套独立编号**（固件 1.0.0、App 0.16.2），混在一个序列里会看不懂
+- `fw` = firmware 固件，`ios` = iPhone App。前缀标模块，因为两者版本号是**两套独立编号**（固件 1.0.0、App 1.0.0），混在一个序列里会看不懂
 - `upstream-phone.8` 这个 tag 不带模块前缀是对的：它标的就是上游的代码，是历史事实
 - 必须用 `-a` 打附注 tag，轻量 tag 不记录打标人、时间和说明
 - `git push` 不会自动带 tag，要单独 `git push origin <tag>`
 - tag 是否已推、指向哪个提交，用 `git tag -l` / `git describe --tags` 现查，不写进文档
+- App 版本只写在 `MARKETING_VERSION`（`ios/MotoNav.xcodeproj/project.pbxproj`，App 与分享扩展共用），代码里读 Bundle，不再手写版本串；发版改这一处并打 `ios-x.y.z` tag
+- build 号由 CI 的 `run_number` 覆写（`MOTONAV_BUILD_NUMBER`），每次打包自增；本地直接跑 `scripts/build-ios-ipa.sh` 时沿用工程里的 `CURRENT_PROJECT_VERSION`
 
 ---
 

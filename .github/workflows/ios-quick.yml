@@ -14,10 +14,6 @@ on:
         description: '要构建的分支（留空则用当前分支）'
         required: false
         default: ''
-      note:
-        description: '本次改动备注（会写进 artifact 文件名）'
-        required: false
-        default: 'build'
 
 permissions:
   contents: read
@@ -73,6 +69,7 @@ jobs:
       - name: Build unsigned IPA
         env:
           MOTONAV_DERIVED_DATA: ${{ runner.temp }}/Derived
+          MOTONAV_BUILD_NUMBER: ${{ github.run_number }}   # build 号每次构建自增，文件名因此唯一
         run: |
           set -o pipefail
           bash scripts/build-ios-ipa.sh | tee build-ios.log
@@ -82,14 +79,9 @@ jobs:
         run: |
           set -euo pipefail
           IPA=$(ls output/ios/*.ipa | head -1)
-          BASE=$(basename "$IPA")
-          NOTE="${{ inputs.note }}"
-          NOTE=${NOTE:-build}
-          # 文件名加上备注和 run 号，方便在 artifact 列表里区分第几次构建
-          NEW="MotoNav-$(echo "$BASE" | sed 's/^MotoNav-//; s/\.ipa$//')-${NOTE}-r${{ github.run_number }}.ipa"
-          cp "$IPA" "output/ios/$NEW"
-          shasum -a 256 "output/ios/$NEW" | tee output/ios/SHA256SUMS.txt
-          echo "ipa=$NEW" >> "$GITHUB_OUTPUT"
+          NAME=$(basename "$IPA")                  # 形如 MotoNav-1.0.0-build42.ipa
+          shasum -a 256 "$IPA" | tee output/ios/SHA256SUMS.txt
+          echo "ipa=$NAME" >> "$GITHUB_OUTPUT"
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4

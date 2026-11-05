@@ -58,7 +58,7 @@ cd MotoNav
 
 只有一种方式：手动。
 
-Actions → 左侧 `iOS Quick Build (unsigned IPA)` → 右侧 `Run workflow` → 选分支（`main` 或你指定的分支），`note` 填本次改了什么（如 `boot-theme`，会进 artifact 文件名）→ Run。
+Actions → 左侧 `iOS Quick Build (unsigned IPA)` → 右侧 `Run workflow` → 选分支（`main` 或你指定的分支）→ Run。
 
 **没有任何自动触发。** 这是刻意的：开发一批内容、自己确认没问题了，再出包装机。推代码不会占用构建时间。
 
@@ -68,8 +68,12 @@ Actions → 左侧 `iOS Quick Build (unsigned IPA)` → 右侧 `Run workflow` �
 
 ## 4. 取包
 
-构建完成后在 run 详情页底部 **Artifacts** 下载 `MotoNav-0.16.2-build16-unsigned-<note>-r<run号>.ipa`。
-同时给了 `SHA256SUMS.txt` 和 `build-ios.log`（编译警告都在这）。
+构建完成后在 run 详情页底部 **Artifacts** 下载 `MotoNav-<版本>-build<build号>.ipa`，例如 `MotoNav-1.0.0-build42.ipa`。
+
+- 版本来自工程的 `MARKETING_VERSION`（`ios/MotoNav.xcodeproj`），发版时改这一处，App 和分享扩展共用
+- build 号由 CI 的 `github.run_number` 覆写，每次打包都不同，所以文件名不会撞车
+- 包是未签名的（CI 里 `CODE_SIGNING_ALLOWED=NO`），装机要自己重签
+- 同目录还有 `SHA256SUMS.txt` 和 `build-ios.log`（编译警告都在这）
 
 ---
 
