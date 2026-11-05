@@ -33,7 +33,9 @@ void handleText(const String &m) {
   if(m.startsWith("#TIME,")) {
     if(homeClock.receive(m.c_str(),millis())) {
       drawHomeClock();
-      Serial.printf("CLOCK sync time=%s date=%s\n",homeClockTime,homeClockDate);
+      char clockTime[6], clockDate[11];
+      homeClock.format(millis(),clockTime,clockDate);
+      Serial.printf("CLOCK sync time=%s date=%s\n",clockTime,clockDate);
     }
     return;
   }

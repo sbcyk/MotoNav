@@ -10,10 +10,8 @@ import re
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
-W = H = 466
+W = H = 466                   # = pin_config.h 的 LCD_WIDTH / LCD_HEIGHT
 CX = 233
-DUST_TOP = 150
-DUST_N = 26
 FONT = "C:/Windows/Fonts/consola.ttf"
 
 H_AMBER = 0xFD46
@@ -31,20 +29,18 @@ def rgb565(c):
     return (((c >> 11) & 31) * 255 // 31, ((c >> 5) & 63) * 255 // 63, (c & 31) * 255 // 31)
 
 
-def blend565(a, b, t):
-    it = 255 - t
-    r = (((a >> 11) & 31) * it + ((b >> 11) & 31) * t + 127) // 255
-    g = (((a >> 5) & 63) * it + ((b >> 5) & 63) * t + 127) // 255
-    bl = ((a & 31) * it + (b & 31) * t + 127) // 255
-    return (r << 11) | (g << 5) | bl
-
-
-_HDR = (Path(__file__).resolve().parent.parent /
-        "firmware/boards/175/MotoNav/resources/HomeSprites.h").read_text(encoding="utf-8")
+_ROOT = Path(__file__).resolve().parent.parent
+_HDR = (_ROOT / "firmware/boards/175/MotoNav/resources/HomeSprites.h").read_text(encoding="utf-8")
+_HP = (_ROOT / "firmware/boards/175/MotoNav/src/pages/HomePage.h").read_text(encoding="utf-8")
 
 
 def _num(name):
-    return int(re.search(rf"#define {name} (-?\d+)", _HDR).group(1))
+    return int(re.search(rf"#define\s+{name}\s+(-?\d+)", _HDR).group(1))
+
+
+def _hp(name):
+    """从 HomePage.h 读整数宏。常量只保留一份，免得固件改了预览静默跑偏。"""
+    return int(re.search(rf"#define\s+{name}\s+(-?\d+)", _HP).group(1))
 
 
 def _grab8(name):
@@ -66,17 +62,16 @@ BEAM_OFF = (_num("HOME_BEAM_OFF_X"), _num("HOME_BEAM_OFF_Y"))
 BEAM_ON = (_num("HOME_BEAM_ON_X"), _num("HOME_BEAM_ON_Y"))
 
 
-def base_image(mix):
-    m = int(mix * 255 + 0.5)
-    opx, npx = _OFF.load(), _ON.load()
-    w, h = _OFF.size
+def base_image(use_on):
+    """取一张完整画面，2x 放大到 466。use_on 为真取“已连接”那张。"""
+    src, pal = (_ON, _NPAL) if use_on else (_OFF, _OPAL)
+    w, h = src.size
+    spx = src.load()
     img = Image.new("RGB", (w, h))
     px = img.load()
     for y in range(h):
         for x in range(w):
-            a, b = opx[x, y], npx[x, y]
-            c = _OPAL[a] if m <= 0 else (_NPAL[b] if m >= 255 else blend565(_OPAL[a], _NPAL[b], m))
-            px[x, y] = rgb565(c)
+            px[x, y] = rgb565(pal[spx[x, y]])
     return img.resize((W, H), Image.NEAREST)
 
 
@@ -90,18 +85,19 @@ def hnoise(x, y):
 
 
 def pal_diff(a, b):
-    """RGB565 两色的分量差之和，0~127。与固件 hPalDiff 一致。"""
+    """RGB565 两色的分量差之和，0~125。与固件 hPalDiff 一致。"""
     d = abs(((a >> 11) & 31) - ((b >> 11) & 31))
     e = abs(((a >> 5) & 63) - ((b >> 5) & 63))
     f = abs((a & 31) - (b & 31))
     return d + e + f
 
 
-MIX_WMAX = 44      # 权重上限
-MIX_WMIN = 5       # 权重下限
-# 马在“已连接”那张里的位置（233 尺度）。必须与 HomePage.h 的 H_HORSE_CX/CY/RX/RY 一致，
-# 两边任何一处改了都要同步。
-HORSE = (52, 95, 62, 72)
+DUST_TOP = _hp("H_DUST_TOP")     # 光尘上升行程
+DUST_N = _hp("H_DUST_N")         # 光尘数量
+MIX_WMAX = _hp("MIX_WMAX")       # 溶解权重上限
+MIX_WMIN = _hp("MIX_WMIN")       # 溶解权重下限
+# 马在“已连接”那张里的位置（233 尺度），与固件 H_HORSE_* 同一来源
+HORSE = (_hp("H_HORSE_CX"), _hp("H_HORSE_CY"), _hp("H_HORSE_RX"), _hp("H_HORSE_RY"))
 
 
 def mix_image(t):
@@ -139,8 +135,8 @@ class Scene:
         self.img = None
         self.d = None
 
-    def load(self, mix):
-        self.img = base_image(mix)
+    def load(self, use_on):
+        self.img = base_image(use_on)
         self.d = ImageDraw.Draw(self.img)
 
     def load_mix(self, t):
@@ -181,14 +177,15 @@ class Scene:
         self.d.ellipse([x - r, y - r, x + r, y + r], fill=rgb565(c))
 
 
-def beam(mix):
-    return (int((BEAM_OFF[0] + (BEAM_ON[0] - BEAM_OFF[0]) * mix) * 2),
-            int((BEAM_OFF[1] + (BEAM_ON[1] - BEAM_OFF[1]) * mix) * 2))
+def beam(use_on):
+    """固件 hBeamX/hBeamY 按 hOnScene 直接取一张的锚点，不做插值——这里跟它一致。"""
+    bx, by = BEAM_ON if use_on else BEAM_OFF
+    return bx * 2, by * 2
 
 
-def dust(s, now, mix, boost=1.0):
+def dust(s, now, use_on, boost=1.0):
     """光尘：加色点，跟固件 hEffects 同一套参数。"""
-    bx, by = beam(mix)
+    bx, by = beam(use_on)
     for i in range(DUST_N):
         ph = math.fmod(i / DUST_N + now * 0.00009, 1.0)
         y = by - int(ph * DUST_TOP)
@@ -202,8 +199,8 @@ def dust(s, now, mix, boost=1.0):
         s.add_ellipse(x, y, r, r, H_DUST if i % 4 else H_HOLY, k)
 
 
-def flare(s, now, mix, boost=1.0):
-    bx, by = beam(mix)
+def flare(s, now, use_on, boost=1.0):
+    bx, by = beam(use_on)
     breath = 0.75 + 0.25 * math.sin(now * 0.0011)
     k = int((1.5 + 1.5 * breath) * boost + 0.5)
     s.add_ellipse(bx, by - 6, 26, 9, H_AMBER, k)
@@ -248,9 +245,10 @@ def render(mode, now=1428):
     else:                                     # ready / info
         mix, boost = 1.0, 1.0
     s = Scene()
-    s.load(mix)
-    flare(s, now, mix, boost)
-    dust(s, now, mix, boost)
+    use_on = mix >= 0.5
+    s.load(use_on)
+    flare(s, now, use_on, boost)
+    dust(s, now, use_on, boost)
     if mode == "info":
         info_card(s)
     return crop(s)
@@ -265,7 +263,7 @@ if __name__ == "__main__":
     for t in (0.25, 0.5, 0.75):
         s = Scene()
         s.load_mix(t)
-        flare(s, 1428, t, 1.3)
-        dust(s, 1428, t, 1.3)
+        flare(s, 1428, t >= 0.5, 1.3)
+        dust(s, 1428, t >= 0.5, 1.3)
         crop(s).save(dest / f"home_mix{int(t*100)}.png")
         print(dest / f"home_mix{int(t*100)}.png")

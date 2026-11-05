@@ -101,7 +101,9 @@ void parseWeather(const String &m);
 void drawMusic();
 uint16_t* shownFrame();
 static uint16_t dim565(uint16_t c, uint32_t k);
-void renderPage(int p, int detail);
+// staticHome：这张画要拿去做滑动落点，首页此时直接画目标画面、不起溶解。
+// 默认值只在这里给一次（C++ 不允许重复指定），定义处不再写。
+void renderPage(int p, int detail, bool staticHome = false);
 bool slidePrepare(int target, int detail);
 void slideCompose(int p);
 void slideCommit();

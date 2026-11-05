@@ -84,8 +84,10 @@ static inline uint16_t dim565(uint16_t c, uint32_t k) {   // k: 0~32，32 = 原�
   return (uint16_t)(((r * k >> 5) << 11) | ((g * k >> 5) << 5) | (b * k >> 5));
 }
 
-// 画一个页面到画布（不改当前页）
-void renderPage(int p, int detail) {
+// 画一个页面到画布（不改当前页）。默认值在 FunctionDeclarations.h 里给。
+// staticHome：这张画要拿去做滑动落点。首页此时必须直接画目标画面，不能起溶解——
+// 落点图会在滑动期间被反复采样，画成 t=0 的旧画面的话，滑到位后才会跳到半溶解。
+void renderPage(int p, int detail, bool staticHome) {
   int keep = page;
   int keepDetail = wxDetail;
   bool ks = sliding;
@@ -93,7 +95,11 @@ void renderPage(int p, int detail) {
   if (p == 2) drawMusic();
   else if (p == 1) { wxDetail = detail; drawWeather(); }
   else if (inNav) drawNavFrame();
-  else drawWaiting(bleConnected ? WAIT_READY : WAIT_NOLINK);
+  else {
+    hSkipMixOnce = staticHome;
+    drawWaiting(bleConnected ? WAIT_READY : WAIT_NOLINK);
+    hSkipMixOnce = false;                    // 万一 drawWaiting 早退，别把标志留给下一帧
+  }
   page = keep; wxDetail = keepDetail; sliding = ks;
 }
 
@@ -112,7 +118,7 @@ bool slidePrepare(int target, int detail) {
   }
   if (fbBuf[1]) { flushWait(); xSemaphoreGive(flushDone); }   // 等正在推的那帧推完，旧画面才完整
   memcpy(slideOld, shownFrame(), BYTES);
-  renderPage(target, detail);
+  renderPage(target, detail, true);
   memcpy(slideNew, gfx->getFramebuffer(), BYTES);
   sliding = true;
   needFlush = false; frameIsMap = false;

@@ -16,8 +16,6 @@
 
 #include "../../HomeClock.h"
 HomeClock homeClock;
-char homeClockTime[6] = {};
-char homeClockDate[11] = {};
 
 // ================= 赐福配色（RGB565）=================
 #define H_AMBER   0xFD46   // 外晕金 (255,168,48)
@@ -114,15 +112,22 @@ static inline uint16_t hPix(int x, int y) {
   return hOnScene ? SCENE_ON_PAL[SCENE_ON_BITS[o]] : SCENE_OFF_PAL[SCENE_OFF_BITS[o]];
 }
 
-// 源像素某一行在圆内的列范围（整帧与溶解共用，免得两处圆的算法各改各的）
-static inline void hSceneRow(int sy, int &x0, int &x1) {
-  const float half = SCENE_OFF_W * 0.5f;
-  const float dy = sy + 0.5f - half;
-  const float t = half * half - dy * dy;
-  if (t <= 0) { x0 = x1 = 0; return; }
-  const float s = sqrtf(t);
-  x0 = (int)(half - s) - 1; if (x0 < 0) x0 = 0;
-  x1 = (int)(half + s) + 1; if (x1 > SCENE_OFF_W) x1 = SCENE_OFF_W;
+// 一个源行对应两行显示像素，取这两行在圆内的并集（已按 2 对齐，源像素一次写两个）。
+// 不能只按源像素中心判一次圆：圆顶 / 圆底曲率大，两行显示像素的圆内宽度差 1~4 像素，
+// 按中心判会漏写圆内那一小截边缘，那截就留在画布上成了旧内容。
+static inline void hScenePairSpan(int sy, int &x0, int &x1) {
+  int a0, a1;
+  x0 = LCD_WIDTH; x1 = 0;
+  for (int sub = 0; sub < 2; sub++) {
+    hCircleSpan(sy * 2 + sub, a0, a1);
+    if (a1 <= a0) continue;
+    if (a0 < x0) x0 = a0;
+    if (a1 > x1) x1 = a1;
+  }
+  if (x0 >= x1) { x0 = x1 = 0; return; }
+  x0 &= ~1;                                            // 源像素一次写两个，起点向下取偶
+  x1 = (x1 + 1) & ~1;                                  // 终点向上取偶，别把圆内那半个像素切掉
+  if (x1 > LCD_WIDTH) x1 = LCD_WIDTH;
 }
 
 // 整帧：逐像素写画布，圆屏四角看不到，按行只写圆内那一段
@@ -131,13 +136,13 @@ static void hFullScene() {
   if (!fb) { gfx->fillScreen(C_BLACK); return; }
   for (int sy = 0; sy < SCENE_OFF_H; sy++) {
     int x0, x1;
-    hSceneRow(sy, x0, x1);
+    hScenePairSpan(sy, x0, x1);
     if (x0 >= x1) continue;
     const uint8_t *ra = SCENE_OFF_BITS + (size_t)sy * SCENE_OFF_W;
     const uint8_t *rb = SCENE_ON_BITS + (size_t)sy * SCENE_ON_W;
-    uint16_t *o0 = fb + (size_t)(sy * 2) * LCD_WIDTH + x0 * 2;
+    uint16_t *o0 = fb + (size_t)(sy * 2) * LCD_WIDTH + x0;
     uint16_t *o1 = o0 + LCD_WIDTH;
-    for (int sx = x0; sx < x1; sx++) {
+    for (int sx = x0 >> 1; sx < (x1 >> 1); sx++) {
       const uint16_t c = hOnScene ? SCENE_ON_PAL[rb[sx]] : SCENE_OFF_PAL[ra[sx]];
       o0[0] = c; o0[1] = c; o1[0] = c; o1[1] = c;
       o0 += 2; o1 += 2;
@@ -179,13 +184,13 @@ static void hMixScene(float t) {
   const uint16_t *newPal = hOnScene ? SCENE_ON_PAL : SCENE_OFF_PAL;
   for (int sy = 0; sy < SCENE_OFF_H; sy++) {
     int x0, x1;
-    hSceneRow(sy, x0, x1);
+    hScenePairSpan(sy, x0, x1);
     if (x0 >= x1) continue;
     const uint8_t *ra = oldBits + (size_t)sy * SCENE_OFF_W;
     const uint8_t *rb = newBits + (size_t)sy * SCENE_OFF_W;
-    uint16_t *o0 = fb + (size_t)(sy * 2) * LCD_WIDTH + x0 * 2;
+    uint16_t *o0 = fb + (size_t)(sy * 2) * LCD_WIDTH + x0;
     uint16_t *o1 = o0 + LCD_WIDTH;
-    for (int sx = x0; sx < x1; sx++) {
+    for (int sx = x0 >> 1; sx < (x1 >> 1); sx++) {
       const uint16_t ca = oldPal[ra[sx]];
       const uint16_t cb = newPal[rb[sx]];
       // 翻转优先级：两图差得越多越先翻，马那一块再加一份权重
@@ -281,6 +286,7 @@ static unsigned long hBoostAt = 0;
 static bool   hFullNext = true;             // 下一帧要整帧重画
 static int    hSt = -1;                     // 上一次状态，用来判断要不要闪一下
 static unsigned long hFrameAt = 0;
+static bool   hSkipMixOnce = false;         // 滑动合成要静态落点：这一次不做溶解
 
 #include "../../FixedPageLayout.h"
 // 固定位置：音乐在左、导航居中、天气在右；降雨在天气上方、预警在下方。
@@ -345,13 +351,18 @@ void drawWaiting(int st) {
   const bool changed = hSt >= 0 && hSt != st;
   hSt = st;
   const bool target = (st == WAIT_READY);
-  if (changed && hOnScene != target) {               // 换状态：从当前这张溶解过去
+  // 滑动合成那一路要的是一张静态落点图：它会在滑动期间反复被采样，
+  // 若这里是 t=0 的旧画面，滑到位后才会跳到半溶解（见 PageNavigation.h renderPage）。
+  const bool wantMix = changed && hOnScene != target && !hSkipMixOnce;
+  hSkipMixOnce = false;
+  if (wantMix) {                                     // 换状态：从当前这张溶解过去
     hMixFromOn = hOnScene;
     hOnScene = target;                               // 锚点与 hPix 立即按新图算
     hMixing = true;
     hMixAt = millis();
-  } else if (changed) {                              // 来回切回原来那张：中断过渡
+  } else if (changed) {                              // 切回原来那张 / 滑动落点：直接定画面
     hMixing = false;
+    hOnScene = target;
   } else if (!hMixing) {
     hOnScene = target;
   }
