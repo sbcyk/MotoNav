@@ -173,16 +173,18 @@ struct ConnectPuckSceneView: UIViewRepresentable {
                 spinning = true
                 puck.removeAllActions()
                 puck.eulerAngles = SCNVector3(-0.12, 0, 0)
-                let spin = SCNAction.rotateBy(x: 0, y: CGFloat.pi * 2, z: 0, duration: duration)
-                spin.timingMode = .easeInEaseOut
+                let tiltRight = SCNAction.rotateTo(x: -0.12, y: 0.12, z: 0, duration: duration * 0.5)
+                tiltRight.timingMode = .easeInEaseOut
+                let settle = SCNAction.rotateTo(x: -0.08, y: 0, z: 0, duration: duration * 0.5)
+                settle.timingMode = .easeOut
+                let spin = SCNAction.sequence([tiltRight, settle])
                 puck.runAction(spin) { [weak self] in
                     self?.spinning = false
                 }
-            } else if spinning {
-                // 让当前动作自然结束
             } else {
-                let yaw = CGFloat(puck.eulerAngles.y)
-                let settle = SCNAction.rotateTo(x: -0.08, y: yaw, z: 0, duration: 0.55)
+                puck.removeAllActions()
+                spinning = false
+                let settle = SCNAction.rotateTo(x: -0.08, y: 0, z: 0, duration: 0.22)
                 settle.timingMode = .easeOut
                 puck.runAction(settle)
             }

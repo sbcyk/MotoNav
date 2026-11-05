@@ -9,6 +9,7 @@ struct KeySetupView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var amapIn = Settings.shared.amapKey
     @State private var copied = false
+    @State private var showGuide = false
 
     private var bundleID: String { Bundle.main.bundleIdentifier ?? "" }
 
@@ -27,45 +28,46 @@ struct KeySetupView: View {
                             Spacer()
                             Text(Settings.mask(settings.amapKeyInUse)).font(.caption).foregroundColor(ContentView.sub)
                         }
-                        Text("不填的话搜索、导航、巡航都用不了").font(.caption).foregroundColor(ContentView.sub)
-                        step(1, "打开高德开放平台，用手机号注册并完成实名认证")
-                        step(2, "控制台 →「应用管理」→「我的应用」→「创建新应用」，再点「添加 Key」")
-                        step(3, "服务平台选「iOS 平台」，安全码（Bundle ID）填下面这个：")
-                        HStack {
-                            Text(bundleID).font(.system(.callout, design: .monospaced)).foregroundColor(ContentView.cyan)
-                                .textSelection(.enabled)
-                            Spacer()
-                            Button(copied ? "已复制" : "复制") {
-                                UIPasteboard.general.string = bundleID
-                                copied = true
-                            }
-                            .font(.subheadline.bold()).foregroundColor(ContentView.pink)
-                        }
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(ContentView.bg))
-                        step(4, "把生成的 Key 复制，粘贴到下面")
+                        Text("不填的话搜索、导航、巡航都用不了").font(.footnote).foregroundColor(ContentView.sub)
                         keyField("粘贴高德 Key", text: $amapIn)
-                        Link(destination: URL(string: "https://console.amap.com/dev/key/app")!) {
-                            Label("打开高德开放平台", systemImage: "safari").font(.subheadline).foregroundColor(ContentView.cyan)
+                        PillButton(title: "保存地图 Key", color: ContentView.pink) { save() }
+                        DisclosureGroup("如何获取高德 Key？", isExpanded: $showGuide) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                step(1, "打开高德开放平台，用手机号注册并完成实名认证")
+                                step(2, "控制台 →「应用管理」→「我的应用」→「创建新应用」，再点「添加 Key」")
+                                step(3, "服务平台选「iOS 平台」，安全码（Bundle ID）填下面这个：")
+                                HStack {
+                                    Text(bundleID).font(.system(.callout, design: .monospaced)).foregroundColor(ContentView.cyan).textSelection(.enabled)
+                                    Spacer()
+                                    Button(copied ? "已复制" : "复制") { UIPasteboard.general.string = bundleID; copied = true }
+                                        .font(.subheadline.bold()).foregroundColor(ContentView.pink).frame(minWidth: 52, minHeight: 44)
+                                }
+                                .padding(10).background(RoundedRectangle(cornerRadius: 10).fill(ContentView.bg))
+                                step(4, "把生成的 Key 复制，粘贴到上面的输入框")
+                                Link(destination: URL(string: "https://console.amap.com/dev/key/app")!) {
+                                    Label("打开高德开放平台", systemImage: "safari").font(.subheadline).foregroundColor(ContentView.cyan).frame(minHeight: 44)
+                                }
+                            }.padding(.top, 12)
                         }
+                        .font(.subheadline.weight(.semibold)).foregroundColor(AppTheme.text)
                     }
 
                     CardView {
                         WeatherSettingsView()
                     }
 
-                    PillButton(title: "保存地图 Key", color: ContentView.pink) { save() }
                     Button("以后再说") { dismiss() }
                         .font(.subheadline).foregroundColor(ContentView.sub)
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .padding(16)
             }
             .background(ContentView.bg.ignoresSafeArea())
             .navigationTitle("Key 设置")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement:.cancellationAction) { Button("关闭") { dismiss() } } }
         }
-        
+
     }
 
     private func step(_ n: Int, _ t: String) -> some View {
@@ -84,7 +86,7 @@ struct KeySetupView: View {
                 .disableAutocorrection(true)
                 .textInputAutocapitalization(.never)
             Button("粘贴") { if let s = UIPasteboard.general.string { text.wrappedValue = s.trimmingCharacters(in: .whitespacesAndNewlines) } }
-                .font(.subheadline.bold()).foregroundColor(ContentView.cyan)
+                .font(.subheadline.bold()).foregroundColor(ContentView.cyan).frame(minWidth: 44, minHeight: 44)
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 10).fill(ContentView.bg))

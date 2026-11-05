@@ -1,108 +1,77 @@
 import SwiftUI
 
-/// 圆屏 Tab：连接卡（产品正视 PNG）+ 圆屏显示 / 圆屏设置入口 + 胎压全字段。
+/// 圆屏 Tab：当前状态、产品正视图和两个设置入口。
 struct DeviceConnectionCard<DisplayDest: View, SystemDest: View>: View {
     @ObservedObject var ble = BleLink.shared
-    @ObservedObject var navi = NaviBridge.shared
-    @ObservedObject var map = MapFeeder.shared
-    @ObservedObject var settings = Settings.shared
     @ObservedObject private var connectAnim = ConnectAnimationCoordinator.shared
     @ViewBuilder var displayDestination: () -> DisplayDest
     @ViewBuilder var systemDestination: () -> SystemDest
 
     var body: some View {
         CardView {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("导航屏")
-                        .font(.caption)
-                        .foregroundColor(AppTheme.sub)
-                    Text(ble.screenName.isEmpty ? "MotoNav" : ble.screenName)
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(AppTheme.text)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    Text("圆屏导航")
-                        .font(.caption)
-                        .foregroundColor(AppTheme.sub)
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(ble.isReady ? AppTheme.green : AppTheme.amber)
-                            .frame(width: 8, height: 8)
-                        Text(ble.connectionSummary)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundColor(ble.isReady ? AppTheme.green : AppTheme.sub)
-                            .lineLimit(1)
+            if #available(iOS 16.0, *) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: 16) {
+                        deviceInfo
+                        Spacer(minLength: 4)
+                        deviceArtwork
                     }
-                    .padding(.top, 2)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("设备电量").font(.caption2).foregroundColor(AppTheme.sub)
-                        Text(ble.screenBattery.map { "\($0)%" } ?? "—")
-                            .font(.subheadline.weight(.semibold).monospacedDigit())
-                            .foregroundColor(AppTheme.text)
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack { Spacer(minLength: 0); deviceArtwork; Spacer(minLength: 0) }
+                        deviceInfo
                     }
-                    .padding(.top, 4)
-                    GlassChip(
-                        title: ble.isReady ? "断开" : "连接",
-                        icon: ble.isReady ? "bolt.slash" : "bolt.fill",
-                        tint: ble.isReady ? nil : AppTheme.accent,
-                        compact: true
-                    ) {
-                        if ble.isReady { ble.disconnect() }
-                        else { connectAnim.connectManually() }
-                    }
-                    .padding(.top, 4)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                ZStack(alignment: .bottom) {
-                    Image("GroundShadow")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 150, height: 34)
-                        .offset(y: 8)
-                        .opacity(0.75)
-                    // 3/4 角产品图（mockup C：银壳 + 导航屏，等比无椭圆压扁）
-                    Image("DevicePuckHero")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 152, height: 170)
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    deviceInfo
+                    Spacer(minLength: 4)
+                    deviceArtwork
                 }
-                .frame(width: 156, height: 186)
             }
-
-            if navi.navigating {
-                Text("导航中：\(navi.uiDir) \(navi.uiDist) 米 · \(navi.uiSpeed) km/h")
-                    .font(.footnote)
-                    .foregroundColor(AppTheme.accent)
-            }
-            Text(Settings.themeName(settings.theme)).font(.caption2).foregroundColor(AppTheme.sub)
-
             Divider().opacity(0.35)
-
             HStack(spacing: 0) {
-                NavigationLink(destination: displayDestination()) {
-                    deviceQuickLinkLabel("圆屏显示", "sun.max")
-                }
-                .buttonStyle(.plain)
-                Divider().frame(height: 28).opacity(0.35)
-                NavigationLink(destination: systemDestination()) {
-                    deviceQuickLinkLabel("圆屏设置", "gearshape")
-                }
-                .buttonStyle(.plain)
+                NavigationLink(destination: displayDestination()) { deviceQuickLinkLabel("圆屏显示", "sun.max") }.buttonStyle(.plain)
+                Divider().frame(height: 30).opacity(0.35)
+                NavigationLink(destination: systemDestination()) { deviceQuickLinkLabel("圆屏设置", "gearshape") }.buttonStyle(.plain)
             }
         }
+    }
+
+    private var deviceInfo: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("导航屏").font(.footnote.weight(.medium)).foregroundColor(AppTheme.sub)
+            Text(ble.screenName.isEmpty ? "MotoNav" : ble.screenName)
+                .font(.system(size: 27, weight: .bold)).foregroundColor(AppTheme.text).lineLimit(2).minimumScaleFactor(0.8)
+            HStack(spacing: 7) {
+                Circle().fill(ble.isReady ? AppTheme.green : AppTheme.amber).frame(width: 9, height: 9)
+                Text(ble.connectionSummary).font(.subheadline.weight(.medium))
+                    .foregroundColor(ble.isReady ? AppTheme.green : AppTheme.sub).lineLimit(2)
+            }
+            HStack(spacing: 6) {
+                Image(systemName: "battery.50").font(.caption)
+                Text(ble.screenBattery.map { "电量 \($0)%" } ?? "电量 —").font(.footnote.weight(.semibold).monospacedDigit())
+            }
+            .foregroundColor(AppTheme.sub)
+            GlassButton(title: ble.isReady ? "断开连接" : "连接圆屏", icon: ble.isReady ? "bolt.slash" : "bolt.fill", style: .tinted) {
+                if ble.isReady { ble.disconnect() } else { connectAnim.connectManually() }
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    private var deviceArtwork: some View {
+        ZStack(alignment: .bottom) {
+            Image("GroundShadow").resizable().scaledToFit().frame(width: 136, height: 30).offset(y: 7).opacity(0.7)
+            Image("DevicePuckHero").resizable().scaledToFit().frame(width: 138, height: 154)
+        }
+        .frame(width: 144, height: 164).accessibilityHidden(true)
     }
 
     private func deviceQuickLinkLabel(_ title: String, _ icon: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon).font(.system(size: 14, weight: .semibold))
-            Text(title).font(.subheadline.weight(.medium))
+        HStack(spacing: 7) {
+            Image(systemName: icon).font(.system(size: 15, weight: .semibold))
+            Text(title).font(.subheadline.weight(.semibold))
         }
-        .foregroundColor(AppTheme.accent)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
+        .foregroundColor(AppTheme.accent).frame(maxWidth: .infinity, minHeight: 44).contentShape(Rectangle())
     }
 }
-

@@ -84,6 +84,7 @@ final class RideRecorder: ObservableObject {
 
 struct RideHistoryView:View {
     @ObservedObject var recorder=RideRecorder.shared
+    @Environment(\.dismiss) private var dismiss
     var body:some View {
         List {
             if let active=recorder.active {Text("记录中 · \(active.mode) · \(Int(active.meters)) 米")}
@@ -92,7 +93,9 @@ struct RideHistoryView:View {
                 NavigationLink(destination:RideDetailView(ride:ride)){RideListRow(ride:ride)}
             }
             if recorder.rides.isEmpty && recorder.active == nil {Text("真实导航或巡航开始时自动记录；模拟导航不记录。")}
-        }.navigationTitle("导航轨迹")
+        }.navigationTitle("导航轨迹").toolbar {
+            ToolbarItem(placement:.cancellationAction){Button("关闭"){dismiss()}}
+        }
     }
 }
 struct ExportSheet: UIViewControllerRepresentable {

@@ -49,10 +49,10 @@ enum AppTheme {
     static let text = Color.dynamic(
         light: UIColor(red: 0.000, green: 0.000, blue: 0.000, alpha: 1),   // #000000
         dark:  UIColor(red: 1.000, green: 1.000, blue: 1.000, alpha: 1))   // #FFFFFF
-    /// 次要文字
+    /// 次要文字（户外可读：浅色加深到系统灰 #636366，深色提亮）
     static let sub = Color.dynamic(
-        light: UIColor(red: 0.557, green: 0.557, blue: 0.576, alpha: 1),   // #8E8E93
-        dark:  UIColor(red: 0.557, green: 0.557, blue: 0.576, alpha: 1))   // #8E8E93
+        light: UIColor(red: 0.388, green: 0.388, blue: 0.400, alpha: 1),   // #636366
+        dark:  UIColor(red: 0.620, green: 0.620, blue: 0.640, alpha: 1))   // #9E9EA3
     /// 导航条选中软底
     static let selCapsule = Color.dynamic(
         light: UIColor(red: 0.000, green: 0.478, blue: 1.000, alpha: 0.12),
@@ -177,7 +177,7 @@ struct GlassButton: View {
     private var fill: Color {
         switch style {
         case .prominent: return tint
-        case .destructive: return Color.clear
+        case .destructive: return AppTheme.red.opacity(0.12)
         case .tinted: return AppTheme.secondaryFill
         case .clear: return AppTheme.secondaryFill.opacity(0.72)
         }
@@ -198,7 +198,7 @@ struct GlassButton: View {
             .minimumScaleFactor(0.8)
             .padding(.horizontal, compact ? 12 : 18)
             .padding(.vertical, compact ? 8 : 12)
-            .frame(minHeight: compact ? 32 : 46)
+            .frame(minHeight: 44)
             .frame(maxWidth: (style == .prominent || (style == .tinted && !compact)) ? .infinity : nil)
             .background(Capsule().fill(fill))
             .contentShape(Capsule())
@@ -245,8 +245,9 @@ struct GlassChip: View {
             .foregroundStyle(labelColor)
             .lineLimit(1)
             .minimumScaleFactor(0.75)
-            .padding(.horizontal, compact ? 9 : 12)
-            .padding(.vertical, compact ? 5 : 8)
+            .padding(.horizontal, compact ? 10 : 12)
+            .padding(.vertical, compact ? 6 : 9)
+            .frame(minHeight: 44)
             .background(Capsule().fill(chipFill))
             .contentShape(Capsule())
         }

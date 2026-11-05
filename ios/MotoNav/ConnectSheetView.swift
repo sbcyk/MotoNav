@@ -1,115 +1,78 @@
 import SwiftUI
 
-/// AirPods 风格连接底栏：3D 圆盘 + 状态 + 可选电量。
+/// 手动连接卡片：小幅倾斜展示，不阻塞自动重连。
 struct ConnectSheetView: View {
     @ObservedObject var coord = ConnectAnimationCoordinator.shared
     @ObservedObject var ble = BleLink.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            Color.black.opacity(0.45)
-                .ignoresSafeArea()
-                .onTapGesture { /* 连接中不点空白关闭 */ }
-
+            Color.black.opacity(0.36).ignoresSafeArea().onTapGesture { }
             VStack(spacing: 0) {
                 HStack {
-                    Spacer(minLength: 36)
-                    Text(coord.deviceTitle)
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(Color(white: 0.1))
+                    Spacer(minLength: 44)
+                    Text(coord.deviceTitle).font(.system(size: 20, weight: .semibold)).foregroundColor(AppTheme.text).lineLimit(1)
                     Spacer(minLength: 0)
-                    Button {
-                        coord.dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color(white: 0.35))
-                            .frame(width: 30, height: 30)
-                            .background(Circle().fill(Color(white: 0.92)))
+                    Button { coord.dismiss() } label: {
+                        Image(systemName: "xmark").font(.system(size: 13, weight: .bold)).foregroundColor(AppTheme.sub)
+                            .frame(width: 44, height: 44).background(Circle().fill(AppTheme.secondaryFill))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plain).accessibilityLabel("关闭连接界面")
                 }
-                .padding(.horizontal, 22)
-                .padding(.top, 18)
+                .padding(.horizontal, 16).padding(.top, 12)
 
-                ConnectPuckSceneView(
-                    spinning: coord.phase == .spinning,
-                    spinSeconds: coord.spinSeconds
-                )
-                .frame(width: 260, height: 260)
-                .padding(.top, 4)
+                ConnectPuckSceneView(spinning: !reduceMotion && coord.phase == .spinning, spinSeconds: coord.spinSeconds)
+                    .frame(width: 238, height: 238)
 
                 if coord.showBattery {
-                    VStack(spacing: 4) {
-                        HStack(spacing: 6) {
-                            batteryGlyph
-                            if ble.screenCharging { Image(systemName: "bolt.fill")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(Color(white: 0.15)) }
-                        }
-                        Text(batteryLabel)
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundColor(Color(white: 0.1))
+                    HStack(spacing: 8) {
+                        Image(systemName: "battery.50").font(.title3).foregroundColor(AppTheme.green)
+                        Text(ble.screenBattery.map { "电量 \($0)%" } ?? "电量 —")
+                            .font(.system(size: 26, weight: .semibold).monospacedDigit()).foregroundColor(AppTheme.text)
                     }
-                    .padding(.top, 4)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
-
-                Text(connectStatusLabel)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(coord.phase == .connected
-                                     ? Color(red: 0.2, green: 0.55, blue: 0.3)
-                                     : Color(white: 0.28))
-                    .padding(.top, 8)
-
+                Text(coord.statusText).font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(coord.phase == .connected ? AppTheme.green : AppTheme.text)
+                    .multilineTextAlignment(.center).padding(.top, 12).padding(.horizontal, 22)
                 HStack(spacing: 6) {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 10))
-                    Text(coord.footerHint)
-                        .font(.system(size: 12, weight: .medium))
+                    Image(systemName: "bolt.fill").font(.system(size: 10))
+                    Text(coord.footerHint).font(.footnote.weight(.medium))
                 }
-                .foregroundColor(Color(white: 0.55))
-                .padding(.bottom, 22)
+                .foregroundColor(AppTheme.sub).padding(.top, 8)
+                if coord.phase == .failed {
+                    GlassButton(title: "重新连接", icon: "arrow.clockwise", style: .prominent) { coord.connectManually() }
+                        .padding(.horizontal, 22).padding(.top, 18)
+                }
             }
-            .frame(maxWidth: 390)
-            .background(
-                RoundedRectangle(cornerRadius: 38, style: .continuous)
-                    .fill(Color.white)
-                    .shadow(color: .black.opacity(0.28), radius: 24, y: 12)
-            )
-            .padding(.horizontal, 10)
-            .padding(.bottom, 10)
+            .padding(.bottom, 22).frame(maxWidth: 390)
+            .background(RoundedRectangle(cornerRadius: 34, style: .continuous).fill(AppTheme.card).shadow(color: .black.opacity(0.24), radius: 24, y: 12))
+            .padding(.horizontal, 10).padding(.bottom, 10)
         }
-        .animation(.easeOut(duration: 0.35), value: coord.showBattery)
-        .animation(.easeOut(duration: 0.35), value: coord.phase)
+        .animation(reduceMotion ? .easeOut(duration: 0.15) : .easeOut(duration: 0.28), value: coord.showBattery)
+        .animation(reduceMotion ? .easeOut(duration: 0.15) : .easeOut(duration: 0.28), value: coord.phase)
     }
+}
 
-    private var connectStatusLabel: String {
-        switch coord.phase {
-        case .connected: return "已连接圆屏"
-        case .spinning, .idle: return "正在连接圆屏…"
+/// 自动重连提示；关闭提示不会取消蓝牙连接。
+struct ReconnectBanner: View {
+    @ObservedObject private var coord = ConnectAnimationCoordinator.shared
+    @ObservedObject private var ble = BleLink.shared
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle().fill(ble.isReady ? AppTheme.green : AppTheme.accent).frame(width: 9, height: 9)
+            Text(ble.isReady ? "圆屏已连接" : coord.bannerText).font(.footnote.weight(.semibold)).foregroundColor(AppTheme.text).lineLimit(1)
+            Spacer(minLength: 4)
+            Button { coord.dismissReconnectBanner() } label: {
+                Image(systemName: "xmark").font(.caption.weight(.bold)).foregroundColor(AppTheme.sub)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).accessibilityLabel("关闭重连提示")
         }
-    }
-
-    private var batteryLabel: String {
-        if let p = ble.screenBattery { return "\(p)%" }
-        return "—"
-    }
-
-    private var batteryGlyph: some View {
-        let pct = CGFloat(ble.screenBattery ?? 100) / 100
-        return ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .stroke(Color(white: 0.12), lineWidth: 1.5)
-                .frame(width: 28, height: 12)
-            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                .fill(Color(red: 0.2, green: 0.78, blue: 0.35))
-                .frame(width: max(2, 22 * pct), height: 6)
-                .padding(.leading, 3)
-        }
-        .overlay(alignment: .trailing) {
-            Capsule().fill(Color(white: 0.12)).frame(width: 2, height: 5)
-                .offset(x: 4)
-        }
+        .padding(.leading, 16).padding(.trailing, 4).frame(maxWidth: .infinity, minHeight: 52)
+        .background(RoundedRectangle(cornerRadius: 18).fill(AppTheme.card))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(AppTheme.stroke.opacity(0.35)))
+        .padding(.horizontal, 16).padding(.vertical, 8)
     }
 }

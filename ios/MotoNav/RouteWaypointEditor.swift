@@ -30,12 +30,17 @@ struct RoutePointPicker: View {
     }
     private func runSearch(){search.search(query,near:near.map{($0.lat,$0.lng)})}
     private func pointRow(_ p: SearchService.Place)->some View {
-        HStack {
+        HStack(spacing: 8) {
             Button {choose(MotorPoint(lat:p.lat,lng:p.lng,name:p.name));dismiss()} label:{
-                VStack(alignment:.leading,spacing:4){Text(p.name);Text(p.address).font(.caption).foregroundColor(.secondary)}
+                HStack {
+                    VStack(alignment:.leading,spacing:4){Text(p.name);Text(p.address).font(.footnote).foregroundColor(.secondary)}
+                    Spacer(minLength: 4)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }.buttonStyle(.borderless)
-            Spacer()
-            Button{favorites.add(p)}label:{Image(systemName:"star")}.buttonStyle(.borderless).accessibilityLabel("收藏\(p.name)")
+            Button{favorites.add(p)}label:{Image(systemName:"star").frame(width:44,height:44)}
+                .buttonStyle(.borderless).accessibilityLabel("收藏\(p.name)")
         }
     }
 }
@@ -58,11 +63,11 @@ struct RouteWaypointEditor: View {
                         VStack(alignment:.leading,spacing:10){
                             Button("途经 \(i+1)：\(point.name.isEmpty ? "已选地点":point.name)"){pick=Pick(index:i)}
                             HStack {
-                                Button("上移"){move(i,-1)}.disabled(i==0)
-                                Button("下移"){move(i,1)}.disabled(i==draft.count-1)
+                                Button("上移"){move(i,-1)}.disabled(i==0).frame(minHeight:44)
+                                Button("下移"){move(i,1)}.disabled(i==draft.count-1).frame(minHeight:44)
                                 Spacer()
-                                Button("删除",role:.destructive){if draft.indices.contains(i){draft.remove(at:i)}}
-                            }.buttonStyle(.borderless).font(.caption)
+                                Button("删除",role:.destructive){if draft.indices.contains(i){draft.remove(at:i)}}.frame(minHeight:44)
+                            }.buttonStyle(.borderless).font(.subheadline)
                         }.padding(.vertical,5)
                     }
                     if draft.count<3{Button("＋ 添加途经点"){pick=Pick(index:draft.count)}}

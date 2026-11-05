@@ -135,33 +135,33 @@ struct NaviScreen: View {
         .padding(.top, 8)
     }
 
-    /// 自绘转向卡：冷淡科技深色半透明 HUD；下一转向用系统蓝块强调
+    /// 骑行扫视优先级：方向 → 转向距离 → 指令，ETA 和剩余信息退到下方。
     private var turnCard: some View {
-        HStack(spacing: 14) {
-            Image(systemName: Self.dirSymbol(navi.uiDir))
-                .font(.system(size: 22, weight: .bold))
-                .foregroundColor(.white)
-                .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(AppTheme.accent))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(navi.uiDist >= 0
-                     ? "\(Self.distText(navi.uiDist)) \(navi.uiRoad.isEmpty ? Self.dirWord(navi.uiDir) : "进入")"
-                     : Self.dirWord(navi.uiDir))
-                    .font(.headline).foregroundColor(.white)
-                Text(navi.uiRoad.isEmpty ? " " : navi.uiRoad)
-                    .font(.footnote).foregroundColor(AppTheme.hudSub)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
+                Image(systemName: Self.dirSymbol(navi.uiDir))
+                    .font(.system(size: 38, weight: .bold)).foregroundColor(AppTheme.accent)
+                    .frame(width: 50, height: 58).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(navi.uiDist >= 0 ? Self.distText(navi.uiDist) : Self.dirWord(navi.uiDir))
+                        .font(.system(size: 30, weight: .heavy)).foregroundColor(.white)
+                        .minimumScaleFactor(0.8).lineLimit(1)
+                    Text(navi.uiRoad.isEmpty ? Self.dirWord(navi.uiDir) : "\(Self.dirWord(navi.uiDir)) · \(navi.uiRoad)")
+                        .font(.headline).foregroundColor(.white.opacity(0.88)).lineLimit(2)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: "clock")
                 Text(Self.etaText(navi.uiRemainS))
-                    .font(.subheadline.weight(.medium)).foregroundColor(.white)
+                Spacer()
                 Text(Self.remainText(navi.uiRemainM, navi.uiRemainS))
-                    .font(.caption2).foregroundColor(AppTheme.hudSub)
             }
+            .font(.footnote.weight(.medium)).foregroundColor(AppTheme.hudSub)
         }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(AppTheme.hudCard))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.white.opacity(0.10)))
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(AppTheme.hudCard))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.white.opacity(0.10)))
     }
 
     private static func dirSymbol(_ d: String) -> String {
@@ -218,6 +218,7 @@ struct NaviScreen: View {
                     .fixedSize()                       // 不被同行挤压截断（实测 "60…" 截断）
             }
             Spacer()
+            chip("ellipsis", "更多", on: false) { drive.showMore = true }
             chip("gearshape", "设置", on: false) { dismiss() }
         }
         .padding(.horizontal, 24)
@@ -251,6 +252,7 @@ struct NaviScreen: View {
         .frame(height: 48)
         .clipShape(Capsule())
         .contentShape(Capsule())
+        .accessibilityAction(named: "退出导航") { confirmClose = true }
         .onTapGesture {
             holdHint = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { holdHint = false }

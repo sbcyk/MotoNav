@@ -186,7 +186,7 @@ struct RideDetailView: View {
                         do { exportURL = try recorder.export(ride) }
                         catch { recorder.error = error.localizedDescription }
                     }
-                    GlassButton(title: "删除", icon: "trash", style: .clear, tint: AppTheme.red) {
+                    GlassButton(title: "删除", icon: "trash", style: .destructive) {
                         confirmDelete=true
                     }
                 }
