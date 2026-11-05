@@ -11,10 +11,13 @@ bool pairingAllowed() { return millis() < PAIR_WINDOW_MS || bondCount() == 0; }
 
 // “连上了没有”只留这一个判定（v2.1）：主循环的状态触发、首页画面、滑动落点、
 // 侧键回首页、状态栏小绿点全走它。以前主循环用 bleConnected && bleAuthed，
-// 而 renderPage / 按键 / 状态灯只看 bleConnected，两套标准在认证没完成时会打架：
-// 事件不触发、翻页却能画出另一张图，于是“卡住，换页才刷新”。
-// 语义仍是 v6.5 的“通过配对验证才算连上”。
-bool homeLinkReady() { return bleConnected && bleAuthed; }   // v2.1
+// 而 renderPage / 按键 / 状态灯只看 bleConnected，两套标准会打架。
+//
+// v2.1.1 改成只看 bleConnected：串口实测快开快关后，手机早就连上了，但 bleAuthed
+// 要等手机上某次写操作才触发加密，最长等了 30 秒（LINK ble=1 auth=0 一直挂着），
+// 这期间首页一直停在未连接。画面该反映的是“手机连上没有”，认证属于数据通道。
+// 需要认证的地方（RX 写权限、通知、HID、导航数据）仍然各自判 bleAuthed，不受影响。
+bool homeLinkReady() { return bleConnected; }   // v2.1.1 不含认证
 
 class SecCB : public BLESecurityCallbacks {
   uint32_t onPassKeyRequest() { return 0; }

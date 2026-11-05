@@ -192,8 +192,8 @@ void loop() {
     bleConnAt = millis();                              // 别每圈都断
   }
 #endif
-  // 1. 连接状态变化（先处理）；v6.5 通过验证才算连上
-  bool conn = homeLinkReady();                        // v2.1 与画面、状态灯同一判定
+  // 1. 连接状态变化（先处理）；v2.1.1 起画面跟 bleConnected 走，不等认证
+  bool conn = homeLinkReady();                        // v2.1.1 与画面、状态灯同一判定
   if (conn != shownConn) {
     shownConn = conn;
     if (conn) {
@@ -208,6 +208,35 @@ void loop() {
       drawWaiting(wasNav ? WAIT_LOST : WAIT_NOLINK);   // 导航途中断开 → 红色 LINK LOST
     }
   }
+  // v2.1.1 连接诊断：只在 bleConnected / bleAuthed 真正变化时打一行，量很小。
+  // 手机连不上来时先看这行：ble=1 auth=0 是认证没完成，ble=0 是链路断了。
+#if defined(CONFIG_NIMBLE_ENABLED)
+  const int advActive = ble_gap_adv_active();
+#else
+  const int advActive = -1;
+#endif
+  {
+    static bool shownBle = false, shownAuth = false;
+    if (bleConnected != shownBle || bleAuthed != shownAuth) {
+      shownBle = bleConnected; shownAuth = bleAuthed;
+      Serial.printf("LINK ble=%d auth=%d adv=%d conn=%d at=%lu\n",
+                    (int)bleConnected, (int)bleAuthed, advActive, (int)conn, millis());
+    }
+  }
+  // v2.1.1 兜底：断开后的 startAdvertising() 返回值没人看，快开快关几次后广播可能没起来，
+  // 手机就再也连不上、画面永远停在未连接。这里每 2 秒确认一次，不在了就重开。
+#if defined(CONFIG_NIMBLE_ENABLED)
+  if (!bleConnected && !powerOffPending) {
+    static unsigned long advCheckAt = 0;
+    if (millis() - advCheckAt >= 2000) {
+      advCheckAt = millis();
+      if (!advActive) {
+        BLEDevice::startAdvertising();
+        Serial.printf("ADV restart ok=%d at=%lu\n", (int)ble_gap_adv_active(), millis());
+      }
+    }
+  }
+#endif
 
   // 2. 取出队列里的所有消息逐条处理（最多 30 条，避免卡住画面）
   static RxMsg local;

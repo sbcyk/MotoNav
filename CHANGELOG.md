@@ -16,6 +16,21 @@
 
 同一处事实只写在一处。这里不再贴长段代码级细节或验证日志。
 
+## [2.1.1] - 2026-11-05
+
+### 修复
+
+- 手机连上后首页仍停在“未连接”，最长要等 30 秒。串口实测（`LINK ble=1 auth=0 conn=0 at=36325` 到 `LINK ble=1 auth=1 conn=1 at=66370`）显示：快开快关后 `bleConnected` 早就是 true，但 `bleAuthed` 要等手机上某次写操作才触发加密，这期间 `homeLinkReady()` 判为“没连上”，画面就一直不切。现在画面判定只看 `bleConnected`，连上即切图；认证仍然管数据通道（RX 写权限 / 通知 / HID / 导航），没有放宽。
+- 断开后的广播偶尔没起来，手机就再也连不回来、画面停在未连接：主循环每 2 秒确认一次 `ble_gap_adv_active()`，不在就重开（实测生效，日志为 `ADV restart ok=1`）。
+
+### 新增
+
+- 串口连接日志：`bleConnected` / `bleAuthed` 变化时打一行 `LINK ble=… auth=… adv=… conn=…`。排查“连不上 / 画面不切”先看这行：`ble=1 auth=0 conn=0` 是认证没完成，`ble=0` 是链路断了。
+
+### 注意
+
+- 断开后偶尔还会看到一个迟到的认证回调把 `bleAuthed` 置回 true（日志里 `ble=0 auth=1`）。所有需要认证的地方都同时判 `bleConnected`，这么用无影响；但不要再写只判 `bleAuthed` 的分支。
+
 ## [2.1.0] - 2026-11-05
 
 ### 新增
@@ -124,7 +139,8 @@
 
 - 固件改用自己的版本线，不再沿用上游 `7.x` 编号。
 
-[未发布]: https://github.com/sbcyk/MotoNav/compare/fw-v2.1.0...HEAD
+[未发布]: https://github.com/sbcyk/MotoNav/compare/fw-v2.1.1...HEAD
+[2.1.1]: https://github.com/sbcyk/MotoNav/compare/fw-v2.1.0...fw-v2.1.1
 [2.1.0]: https://github.com/sbcyk/MotoNav/compare/fw-v1.1.1...fw-v2.1.0
 [1.1.1]: https://github.com/sbcyk/MotoNav/compare/fw-v1.1.0...fw-v1.1.1
 [1.1.0]: https://github.com/sbcyk/MotoNav/compare/fw-v1.0.0...fw-v1.1.1
