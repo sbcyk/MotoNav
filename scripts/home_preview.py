@@ -344,6 +344,6 @@ if __name__ == "__main__":
                         (BEAM_BOX[0] <= sx < BEAM_BOX[2] and BEAM_BOX[1] <= sy < BEAM_BOX[3])):
                     bad += 1
     if bad:
-        raise SystemExit(f"背景校验失败：两态在人马矩形外有 {bad} 个像素不同，"
+        raise SystemExit(f"背景校验失败：两态在人马矩形与柱带之外有 {bad} 个像素不同，"
                          f"说明素材没对齐或矩形常量改错了")
-    print("背景校验：两态在人马矩形外差异 0 像素")
+    print("背景校验：两态在人马矩形与柱带之外差异 0 像素")

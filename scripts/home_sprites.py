@@ -55,6 +55,7 @@ BEAM_FADE_OFF = (174, 96)                   # 坐火：y=174 以下不动，到 
 BEAM_FADE_ON = (174, 128)                   # 未坐火：收得更低，柱子更短
 BEAM_LIGHT = (22, 80)                       # 判定"光"的下限：r-b > 22 且 r > 80
 BEAM_THICK = 6                              # 竖直连续这么多像素才算"厚"（柱芯/光锥）；细线是光环，留着
+BEAM_GROW = 4                               # 估背景时洞再外扩几圈：紧贴洞边的是余晖，算进去底会偏亮
 
 
 def smoothstep(a, b, v):
@@ -98,6 +99,18 @@ def beam_cut(img, y_start, y_end):
     if not any(any(r) for r in todo):
         return out
     mask = [row[:] for row in todo]                       # 扩散会把 todo 吃掉，先留一份
+    # 估背景时把洞再往外扩 BEAM_GROW 圈：紧贴洞边的是光晕的余晖，算进去底就偏亮
+    g = BEAM_GROW
+    grown = [row[:] for row in mask]
+    for j in range(h):
+        for i in range(w):
+            if mask[j][i]:
+                for dj in range(-g, g + 1):
+                    for di in range(-g, g + 1):
+                        jj, ii = j + dj, i + di
+                        if 0 <= jj < h and 0 <= ii < w:
+                            grown[jj][ii] = True
+    todo = grown
     bg = [[list(o) for o in row] for row in orig]
     for _ in range(200):
         nxt = [[False] * w for _ in range(h)]
