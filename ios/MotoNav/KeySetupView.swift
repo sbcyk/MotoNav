@@ -5,6 +5,7 @@ import SwiftUI
 /// 「我的 → 通用」里的密钥卡片。iOS v1.0 起不再弹填写页：高德 Key 和和风天气
 /// 都在这张卡里直接改，Key 只保存在这台手机上。
 /// 缺高德 Key 时卡片自己描橙色边，不靠外部传状态。
+/// 文件名沿用 `KeySetupView.swift`（工程里已按这个名字注册），类型已改成卡片形式。
 struct KeySettingsCard: View {
     @ObservedObject var settings = Settings.shared
     @ObservedObject private var weather = Weather.shared      // displaySummary 跟着 info 变
@@ -13,6 +14,7 @@ struct KeySettingsCard: View {
     @State private var weatherIn = Weather.shared.key
     @State private var amapNote = ""
     @State private var weatherNote = ""
+    @State private var weatherNoteIsError = false
     @State private var weatherReady = !(Weather.shared.host.isEmpty || Weather.shared.key.isEmpty)
     @State private var copied = false
     @State private var showGuide = false
@@ -23,7 +25,7 @@ struct KeySettingsCard: View {
     var body: some View {
         CardView {
             titleRow
-            Text("只保存在这台手机上；保存后马上生效，不用重启。")
+            Text("只保存在这台手机上，不会上传；填好点保存即可。")
                 .font(.caption).foregroundColor(AppTheme.sub)
             amapBlock
             Divider().opacity(0.35)
@@ -41,9 +43,13 @@ struct KeySettingsCard: View {
     private var titleRow: some View {
         HStack(spacing: 8) {
             Text("密钥设置").font(.headline).foregroundColor(AppTheme.text)
-            if amapMissing { badge("未填", color: AppTheme.orange) }
-            Spacer(minLength: 4)
-            Text(Settings.mask(settings.amapKeyInUse)).font(.caption).foregroundColor(AppTheme.sub)
+            // 未填时只留这个胶囊，右边不再重复一遍「没填」
+            if amapMissing {
+                badge("未填", color: AppTheme.orange)
+            } else {
+                Spacer(minLength: 4)
+                Text(Settings.mask(settings.amapKeyInUse)).font(.caption).foregroundColor(AppTheme.sub)
+            }
         }
     }
 
@@ -63,9 +69,15 @@ struct KeySettingsCard: View {
             PillButton(title: amapMissing ? "保存密钥" : "更新密钥", color: AppTheme.accent,
                        enabled: trimmed(amapIn) != settings.amapKeyInUse) { saveAmap() }
             if !amapNote.isEmpty {
-                Text(amapNote).font(.caption).foregroundColor(AppTheme.accent)
+                // 清空后 amapMissing 变真，「已清空」就用橙色，别再是成功色
+                Text(amapNote).font(.caption)
+                    .foregroundColor(amapMissing ? AppTheme.orange : AppTheme.accent)
             }
             guide
+        }
+        // 输入框一改，上一条保存结果就过期了；保存时的那次赋值 trim 后与原值相同，不会误清
+        .onChange(of: amapIn) { now in
+            if trimmed(now) != settings.amapKeyInUse { amapNote = "" }
         }
     }
 
@@ -78,6 +90,7 @@ struct KeySettingsCard: View {
                 HStack(spacing: 8) {
                     Text(bundleID).font(.system(.caption, design: .monospaced))
                         .foregroundColor(AppTheme.accent).lineLimit(1).minimumScaleFactor(0.7)
+                        .textSelection(.enabled)
                     Spacer(minLength: 4)
                     Button(copied ? "已复制" : "复制") {
                         UIPasteboard.general.string = bundleID
@@ -114,19 +127,30 @@ struct KeySettingsCard: View {
             }
             Text("填了才能在圆屏看当前天气和逐小时预报。")
                 .font(.caption).foregroundColor(AppTheme.sub)
-            keyField("API Host：xxxx.qweatherapi.com", text: $host, secure: false)
+            keyField("API Host：xxxx.qweatherapi.com", text: $host)
             keyField("API Key", text: $weatherIn, secure: true)
             HStack(spacing: 10) {
                 GlassButton(title: "保存", icon: "tray.and.arrow.down", style: .tinted) { saveWeather() }
                 GlassButton(title: "刷新", icon: "arrow.clockwise", style: .clear) { weather.request(force: true) }
             }
             if !weatherNote.isEmpty {
-                Text(weatherNote).font(.caption).foregroundColor(AppTheme.orange)
+                Text(weatherNote).font(.caption)
+                    .foregroundColor(weatherNoteIsError ? AppTheme.orange : AppTheme.accent)
             } else {
                 Text(weather.displaySummary).font(.caption).foregroundColor(AppTheme.sub)
             }
-            Link("和风天气来源说明", destination: URL(string: "https://developer.qweather.com/attribution.html")!)
-                .font(.caption).foregroundColor(AppTheme.accent)
+            // 热区要加在 label 上：加在 Link 外层只改布局，点不到那么高
+            Link(destination: URL(string: "https://developer.qweather.com/attribution.html")!) {
+                Text("和风天气来源说明").font(.caption).foregroundColor(AppTheme.accent)
+                    .frame(minHeight: 44, alignment: .leading)
+            }
+        }
+        // 同样的道理：一改输入框，上一条保存结果 / 报错就过期了
+        .onChange(of: host) { now in
+            if trimmed(now) != weather.host { weatherNote = "" }
+        }
+        .onChange(of: weatherIn) { now in
+            if trimmed(now) != weather.key { weatherNote = "" }
         }
     }
 
@@ -200,9 +224,11 @@ struct KeySettingsCard: View {
             host = weather.host          // save 会把 Host 规范化，写回让输入框显示整理后的值
             weatherIn = weather.key
             weatherReady = true
-            weatherNote = ""
+            weatherNote = "已保存，圆屏切到天气页就会按新配置查询"
+            weatherNoteIsError = false
         } catch {
             weatherNote = error.localizedDescription
+            weatherNoteIsError = true
         }
     }
 }

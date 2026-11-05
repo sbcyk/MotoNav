@@ -13,7 +13,7 @@ enum SettingsHubItem: String, Identifiable, CaseIterable {
     }
     var subtitle: String {
         switch self {
-        case .general: return "外观与密钥"
+        case .general: return "密钥、外观与导航栏"
         case .voice: return "语音与播报"
         case .about: return "版本与使用说明"
         }
@@ -34,6 +34,8 @@ struct SettingsHubList<Destination: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(SettingsHubItem.allCases.enumerated()), id: \.element.id) { idx, item in
+                // tag/selection 这套在 iOS 16 起被标记弃用，但部署目标是 15.0 又没有 NavigationStack，
+                // 想让外部把某一项推开只能用这个初始化器。工程没开 -Werror，只出一条警告。
                 NavigationLink(destination: destination(item),
                                tag: item,
                                selection: Binding(get: { activeItem },

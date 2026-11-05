@@ -346,7 +346,7 @@ $env:GRADLE='C:\tools\gradle\gradle-8.10.2\bin\gradle.bat'
 
 ```sh
 bash build-ios.sh    # Xcode + CocoaPods 1.16.2
-# 产物 output/ios/MotoNav-<ver>-build<n>-unsigned.ipa
+# 产物 output/ios/MotoNav-<版本>-build<号>.ipa（未签名，不带后缀）
 ```
 
 Windows 编不了 iOS，走 GitHub Actions。Actions 已启用，工作流在 `.github/workflows/ios-quick.yml`，手动触发，下载 artifact，用 iLoader / SideStore 自签。详细步骤见 `docs/IOS-CI-GUIDE.md`。
@@ -374,7 +374,7 @@ Windows 编不了 iOS，走 GitHub Actions。Actions 已启用，工作流在 `.
 - 想临时跑一次官方 iOS 流程：先 `Enable workflow`，跑完记得再禁用
 - **每次同步上游之后检查一遍 Actions 左侧列表**，上游新增的 workflow 进来后默认是启用的，会破坏"全手动"
 
-iOS 出包：`Run workflow` → 选分支 → note 填本次改了什么 → 跑完在 run 页面下载 artifact。
+iOS 出包：`Run workflow` → 选分支（build 号由 run 号自动生成，不再手填说明）→ 跑完在 run 页面下载 artifact。
 固件出包：本地 `python firmware/package_flasher.py --tools-dir <含 esptool.exe 的目录>`，产物在 `output/firmware/<版本>/`。只给自己装机的话直接用 esptool 烧 app 分区即可，不必打包。
 
 ---

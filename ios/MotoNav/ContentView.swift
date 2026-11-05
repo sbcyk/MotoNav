@@ -101,8 +101,9 @@ struct ContentView: View {
             if !uiStarted {
                 uiStarted=true
                 if !settings.keysMissing && !ble.isReady && ble.bluetoothAvailable {connectAnim.connectAutomatically()}
-            }                                    // iOS v0.7 打开 App 时，高德或高德 key 没填就提醒一次
+            }
             if !ContentView.keyPrompted && settings.keysMissing {
+                // iOS v0.7 起开 App 提醒一次；v1.0 起不再弹填写页，直接切到密钥卡片
                 ContentView.keyPrompted = true
                 openKeySettings()
             }
@@ -112,6 +113,10 @@ struct ContentView: View {
                   let t = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "t" })?.value
             else { return }
             importShare(t)
+        }
+        .onChange(of: page) { now in
+            // 没退「通用」就直接点了别的 tab：清掉待推项，否则下次回到「我的」会被再推一次
+            if now != 3 { settingsPush = nil }
         }
     }
 
@@ -491,6 +496,7 @@ struct ContentView: View {
         }
         // 巡航一开始就亮出那一页：「结束巡航」以前是常驻按钮，别让它藏进 tab 里
         .onChange(of: navi.cruising) { now in if now { naviTab = 1 } }
+        .onChange(of: naviTab) { _ in hideKeyboard() }   // 搜索框还弹着键盘时切到巡航，先收起来
     }
 
     /// 卡里的「导航模式」：选目的地、导入高德分享路线、看搜索结果。
@@ -687,7 +693,7 @@ struct ContentView: View {
                 else if !needAmapKey(), let err = navi.startCruise() { cruiseNote = err }
             }
             Text("连续停车 10 分钟后自动结束。")
-                .font(.footnote).foregroundColor(ContentView.sub)
+                .font(.caption).foregroundColor(ContentView.sub)
             if !cruiseNote.isEmpty { Text(cruiseNote).font(.footnote).foregroundColor(AppTheme.orange) }
         }
     }
@@ -847,8 +853,12 @@ struct ContentView: View {
     private func openKeySettings() {
         hideKeyboard()
         page = 3
-        // 先让「我的」这一页上到层级里，NavigationLink 才存在；同一帧推会被丢掉
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { settingsPush = .general }
+        // 切页那一帧「我的」还没建出来，NavigationLink 尚不存在；等它建好再推。
+        // 等的时候用户可能已经点了别的 tab，那就别再强推，否则下次进「我的」会自动弹进「通用」。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            guard page == 3 else { return }
+            settingsPush = .general
+        }
     }
 
     /// 没填高德 key：跳到密钥设置，返回 true（调用的地方就不往下做了）

@@ -179,29 +179,6 @@ final class QWeatherHTTP: NSObject, URLSessionTaskDelegate {
     }
 }
 
-struct WeatherSettingsView: View {
-    @ObservedObject private var weather = Weather.shared
-    @State private var host = Weather.shared.host
-    @State private var key = Weather.shared.key
-    @State private var error = ""
-    var body: some View {
-        DisclosureGroup("和风天气 · 可选配置") {
-            Text("填写 API Host 和 API Key 后，可在圆屏查询当前天气和逐小时预报。")
-                .font(.caption).foregroundColor(ContentView.sub)
-            TextField("API Host：xxxx.qweatherapi.com", text: $host).textInputAutocapitalization(.never).autocorrectionDisabled()
-            SecureField("API Key", text: $key).textInputAutocapitalization(.never).autocorrectionDisabled()
-            Button("保存天气配置") {
-                do { try weather.save(host: host, key: key.trimmingCharacters(in: .whitespacesAndNewlines)); error = "" }
-                catch { self.error = error.localizedDescription }
-            }
-            if !error.isEmpty { Text(error).foregroundColor(.orange) }
-            Button("刷新天气") { weather.request(force: true) }
-            Text(weather.displaySummary).font(.caption)
-            Link("和风天气来源说明", destination: URL(string: "https://developer.qweather.com/attribution.html")!)
-        }.tint(ContentView.cyan)
-    }
-}
-
 extension Array {
     subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
