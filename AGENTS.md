@@ -324,7 +324,7 @@ esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRAM=opi,CD
 
 - 分区表只决定代码和文件写入的地址与上限，不改变 Flash 模式/频率、PSRAM 模式、CPU 频率与 cache 配置，因此与运行速度无关。
 - 切换方案必须整片刷（`--erase-all`），NVS 位于 `0x9000`，其余区域地址随方案变化，设置与手机配对会清空。
-- 当前固件占用 app0 1,403,255 字节（镜像），约 4.50MB 方案的 29%、12.50MB 方案的 11%。
+- 当前固件占用 app0 1,403,795 字节（镜像，v2.3.0），约 4.50MB 方案的 29%、12.50MB 方案的 11%。
 - 当前固件未挂载任何文件系统：源码中无 `FATFS`/`FFat`/`SPIFFS` 引用，上述 ffat / spiffs 分区目前均为未使用空间。
 - `max_app_32MB.csv`（单槽 31.87MB，无 OTA、无文件系统）存在于 `tools/partitions/`，但不是菜单项，要使用需自定义分区表。
 

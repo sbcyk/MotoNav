@@ -43,7 +43,7 @@ try {
     if($taskManifest.schema -ne 1 -or $taskManifest.boards.Count -ne 1 -or $taskManifest.boards[0].id -ne '175'){throw '本包仅支持微雪1.75。'}
     $taskBoard=$taskManifest.boards[0]
     $taskVersion=$taskBoard.versions[0]
-    if($taskVersion.version -ne '2.2.0'){throw '固件清单版本不匹配。'}
+    if($taskVersion.version -ne '2.3.0'){throw '固件清单版本不匹配。'}
     $taskPanel=$taskVersion.panels[0]
     $taskApp=Resolve-PackageFile $taskPanel.app $false
     $taskFullFile=Resolve-PackageFile $taskPanel.full $true
