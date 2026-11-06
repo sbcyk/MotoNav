@@ -292,6 +292,8 @@ struct BatteryGauge: View {
                     Image(systemName: "bolt.fill")
                         .font(.system(size: height * 0.62, weight: .bold))
                         .foregroundColor(.white)
+                        // 电量很低时白色闪电会落在浅色空槽上，加一点投影保证两种底色都看得清
+                        .shadow(color: .black.opacity(0.55), radius: 1, y: 0.5)
                         .frame(maxWidth: .infinity)
                 }
             }

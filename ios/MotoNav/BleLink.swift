@@ -107,11 +107,10 @@ final class BleLink: NSObject, ObservableObject {
 
     var bluetoothAvailable:Bool {central.state == .poweredOn}
 
+    /// 只描述连接状态：设备名和电量在设备卡片里各有一行，这里不再重复。
     var connectionSummary:String {
         if isReady {
-            if !verified { return "请按圆屏提示完成配对" }
-            let name=screenName.isEmpty ? "圆屏":screenName
-            return name+" 已连接"+(screenBattery.map{" · \($0)%"+(screenCharging ? " 充电中":"")} ?? "")
+            return verified ? "已连接" : "请按圆屏提示完成配对"
         }
         if status.contains("权限") { return "请在 iPhone 设置中允许蓝牙访问" }
         if status.contains("没打开") { return "请打开 iPhone 蓝牙" }

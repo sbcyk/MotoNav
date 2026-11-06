@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 /// 设备 Tab：当前连接状态、产品正视图和屏幕设置 / 同步时间入口。
@@ -5,6 +6,7 @@ struct DeviceConnectionCard<DisplayDest: View, SystemDest: View>: View {
     @ObservedObject var ble = BleLink.shared
     @ObservedObject private var connectAnim = ConnectAnimationCoordinator.shared
     @State private var synced = false
+    @State private var syncedReset: DispatchWorkItem?
     @ViewBuilder var displayDestination: () -> DisplayDest
     @ViewBuilder var systemDestination: () -> SystemDest
 
@@ -38,7 +40,11 @@ struct DeviceConnectionCard<DisplayDest: View, SystemDest: View>: View {
                 Button {                     // 连上就能点，放在连接卡片里，不再单独占一行
                     ble.syncPhoneClock(force: true)
                     synced = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { synced = false }
+                    // 连续点时只保留最后一次的复位，避免先前的定时器提前改掉「已同步」
+                    syncedReset?.cancel()
+                    let work = DispatchWorkItem { synced = false }
+                    syncedReset = work
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
                 } label: {
                     // 反馈落在按钮自己身上，不额外加行，卡片高度不变、页面就不会被迫滚动 // v1.0
                     deviceQuickLinkLabel(synced ? "已同步" : "同步时间",
@@ -49,7 +55,13 @@ struct DeviceConnectionCard<DisplayDest: View, SystemDest: View>: View {
                 .disabled(!ble.isReady || !ble.verified)
             }
         }
-        .onChange(of: ble.isReady) { ready in if !ready { synced = false } }
+        .onChange(of: ble.isReady) { ready in
+            if !ready {
+                syncedReset?.cancel()
+                synced = false
+            }
+        }
+        .onDisappear { syncedReset?.cancel() }
     }
 
     private var deviceInfo: some View {
@@ -67,7 +79,13 @@ struct DeviceConnectionCard<DisplayDest: View, SystemDest: View>: View {
                 Text(ble.screenBattery.map { "\($0)%" } ?? "电量未知")
                     .font(.footnote.weight(.semibold).monospacedDigit())
                     .foregroundColor(AppTheme.sub)
+                if ble.screenCharging {
+                    Text("充电中").font(.footnote.weight(.medium)).foregroundColor(AppTheme.green)
+                }
             }
+            // 电量图标本身已经会读「电量 x%」，数字和「充电中」不再重复读
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(ble.screenBattery.map { "电量 \($0)%" + (ble.screenCharging ? "，充电中" : "") } ?? "电量未知")
             GlassButton(title: ble.isReady ? "断开连接" : "连接圆屏", icon: ble.isReady ? "bolt.slash" : "bolt.fill", style: .tinted) {
                 if ble.isReady { ble.disconnect() } else { connectAnim.connectManually() }
             }

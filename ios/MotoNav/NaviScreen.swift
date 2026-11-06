@@ -74,7 +74,7 @@ struct NaviScreen: View {
     @StateObject private var drive = DriveViewController()
     @Environment(\.dismiss) private var dismiss
     @State private var confirmClose = false
-    @State private var holding = false                  // 正在长按“退出导航”
+    @State private var holding = false                  // 正在长按“结束导航”
     @State private var holdHint = false
 
     var body: some View {
@@ -88,8 +88,8 @@ struct NaviScreen: View {
             if navi.showArrived { arrivedCard }
         }
         .onAppear { drive.onClose = { confirmClose = true } }
-        .alert("退出导航？", isPresented: $confirmClose) {
-            Button("退出导航", role: .destructive) { exitNavi() }
+        .alert("结束导航？", isPresented: $confirmClose) {
+            Button("结束导航", role: .destructive) { exitNavi() }
             Button("继续导航", role: .cancel) {}
         }
         .onChange(of: navi.navigating) { now in
@@ -102,7 +102,7 @@ struct NaviScreen: View {
             Button(drive.isOverview ? "回到车头跟随" : "看全程") { drive.toggleOverview() }
             Button(drive.trafficOn ? "关掉路况颜色" : "显示路况颜色") { drive.toggleTraffic() }
             Button("返回首页修改设置") { dismiss() }
-            Button("退出导航", role: .destructive) { exitNavi() }
+            Button("结束导航", role: .destructive) { exitNavi() }
             Button("取消", role: .cancel) {}
         }
     }
@@ -192,14 +192,18 @@ struct NaviScreen: View {
 
     private static func etaText(_ remainS: Int) -> String {
         guard remainS > 0 else { return "—" }
+        return etaFormatter.string(from: Date().addingTimeInterval(TimeInterval(remainS))) + " 到达"
+    }
+
+    private static let etaFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
-        return f.string(from: Date().addingTimeInterval(TimeInterval(remainS))) + " 到达"
-    }
+        return f
+    }()
 
     private static func remainText(_ m: Int, _ s: Int) -> String {
         guard m > 0 || s > 0 else { return "—" }
-        return String(format: "%.1f km · %d 分", Double(m) / 1000, max(1, s / 60))
+        return "\(distText(m)) · \(max(1, s / 60)) 分"
     }
 
     /// 底部控制面板：模拟控制、常用操作和长按结束收进同一张卡片，不再各摆一个方块。
@@ -275,7 +279,7 @@ struct NaviScreen: View {
         }
         .frame(height: 50)
         .contentShape(Rectangle())
-        .accessibilityAction(named: "退出导航") { confirmClose = true }
+        .accessibilityAction(named: "结束导航") { confirmClose = true }
         .onTapGesture {
             holdHint = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { holdHint = false }

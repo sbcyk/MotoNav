@@ -31,6 +31,9 @@ struct ConnectSheetView: View {
                         Text(ble.screenBattery.map { "\($0)%" } ?? "电量 —")
                             .font(.system(size: 26, weight: .semibold).monospacedDigit()).foregroundColor(AppTheme.text)
                     }
+                    // 图标自己会读「电量 x%」，数字不再重复读
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(ble.screenBattery.map { "电量 \($0)%" + (ble.screenCharging ? "，充电中" : "") } ?? "电量未知")
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
                 Text(coord.statusText).font(.system(size: 16, weight: .semibold))

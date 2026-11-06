@@ -3,19 +3,45 @@ import CoreLocation
 
 final class Favorites: ObservableObject {
     static let shared = Favorites()
+    /// 同一地点的判定半径（米）：重复收藏和星标状态共用
+    static let samePlaceMeters: Double = 50
     struct Place: Codable, Identifiable {
         var id = UUID(); var name: String; var address: String; var lat: Double; var lng: Double
+        /// 自定义标签（家、公司…）。optional 是为了兼容旧版本已经存下的收藏数据。
+        var tag: String? = nil
         var searchPlace: SearchService.Place { .init(name: name, address: address, lat: lat, lng: lng) }
+        var tagText: String { tag?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
     }
     @Published private(set) var places: [Place] = []
     private init() {
         if let data = UserDefaults.standard.data(forKey: "favorite_places") { places = (try? JSONDecoder().decode([Place].self, from: data)) ?? [] }
     }
+    /// 已经用过的标签，按收藏顺序去重（给筛选条用）
+    var tags: [String] {
+        var seen = Set<String>()
+        return places.compactMap { place in
+            let tag = place.tagText
+            guard !tag.isEmpty, seen.insert(tag).inserted else { return nil }
+            return tag
+        }
+    }
     func add(_ p: SearchService.Place) {
-        guard !places.contains(where: { NaviBridge.distM($0.lat, $0.lng, p.lat, p.lng) < 50 }) else { return }
+        guard !places.contains(where: { NaviBridge.distM($0.lat, $0.lng, p.lat, p.lng) < Self.samePlaceMeters }) else { return }
         places.insert(Place(name: p.name, address: p.address, lat: p.lat, lng: p.lng), at: 0); save()
     }
     func remove(_ p: Place) { places.removeAll { $0.id == p.id }; save() }
+    /// 给收藏地点打标签；传空字符串或 nil 就是移除标签，标签最长 16 个字。
+    func setTag(_ tag: String?, for place: Place) {
+        guard let i = places.firstIndex(where: { $0.id == place.id }) else { return }
+        let value = String((tag ?? "").trimmingCharacters(in: .whitespacesAndNewlines).prefix(16))
+        places[i].tag = value.isEmpty ? nil : value
+        save()
+    }
+    /// 按标签筛选；tag 为空时返回全部。
+    func taggedPlaces(_ tag: String) -> [Place] {
+        let value = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? places : places.filter { $0.tagText == value }
+    }
     private func save() { if let data = try? JSONEncoder().encode(places) { UserDefaults.standard.set(data, forKey: "favorite_places") } }
 }
 

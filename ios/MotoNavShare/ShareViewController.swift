@@ -4,7 +4,7 @@ import UIKit
 ///
 /// “分享到导一导”（iOS 分享扩展）：在高德 App 里分享路线时选导一导，这里收到分享的文字 / 链接，
 /// 直接打开导一导（motonav://share?t=分享的文字），由 App 去导入路线（ContentView.importShare）。
-/// 打不开 App 时把内容复制到剪贴板，提示到导一导里点“粘贴高德分享的路线”。
+/// 打不开 App 时把内容复制到剪贴板，提示到导一导里点「导入高德路线」。
 final class ShareViewController: UIViewController {
     private let label = UILabel()
     private let okButton = UIButton(type: .system)
@@ -99,7 +99,7 @@ final class ShareViewController: UIViewController {
 
     private func fallback(_ text: String) {
         UIPasteboard.general.string = text
-        show("没能直接打开 MotoNav，链接已经复制好了。\n\n打开 MotoNav，点“粘贴高德分享的路线”就行。")
+        show("没能直接打开导一导，链接已经复制好了。\n\n打开导一导，点「导入高德路线」就行。")
     }
 
     private func show(_ msg: String) {

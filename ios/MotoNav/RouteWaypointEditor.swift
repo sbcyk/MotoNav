@@ -22,7 +22,7 @@ struct RoutePointPicker: View {
                 if !search.results.isEmpty {
                     Section("搜索结果") {ForEach(search.results){p in pointRow(p)}}
                 } else if query.isEmpty {
-                    if !favorites.places.isEmpty {Section("常用地点"){ForEach(favorites.places){p in pointRow(p.searchPlace)}}}
+                    if !favorites.places.isEmpty {Section("收藏地点"){ForEach(favorites.places){p in pointRow(p.searchPlace)}}}
                     Section("最近目的地"){ForEach(History.shared.places){p in pointRow(p)}}
                 }
             }.navigationTitle(title).toolbar{ToolbarItem(placement:.cancellationAction){Button("取消"){dismiss()}}}
@@ -30,7 +30,8 @@ struct RoutePointPicker: View {
     }
     private func runSearch(){search.search(query,near:near.map{($0.lat,$0.lng)})}
     private func pointRow(_ p: SearchService.Place)->some View {
-        HStack(spacing: 8) {
+        let saved = isFavorite(p)
+        return HStack(spacing: 8) {
             Button {choose(MotorPoint(lat:p.lat,lng:p.lng,name:p.name));dismiss()} label:{
                 HStack {
                     VStack(alignment:.leading,spacing:4){Text(p.name);Text(p.address).font(.footnote).foregroundColor(.secondary)}
@@ -39,9 +40,18 @@ struct RoutePointPicker: View {
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .contentShape(Rectangle())
             }.buttonStyle(.borderless)
-            Button{favorites.add(p)}label:{Image(systemName:"star").frame(width:44,height:44)}
-                .buttonStyle(.borderless).accessibilityLabel("收藏\(p.name)")
+            // 已收藏时星标填满，点过就有可见反馈（add 对同一地点是幂等的）
+            Button{favorites.add(p)}label:{
+                Image(systemName: saved ? "star.fill" : "star")
+                    .foregroundColor(saved ? AppTheme.accent : AppTheme.sub)
+                    .frame(width:44,height:44)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(saved ? "已收藏\(p.name)" : "收藏\(p.name)")
         }
+    }
+    private func isFavorite(_ p: SearchService.Place) -> Bool {
+        favorites.places.contains { NaviBridge.distM($0.lat, $0.lng, p.lat, p.lng) < Favorites.samePlaceMeters }
     }
 }
 
