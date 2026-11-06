@@ -3,10 +3,17 @@
 String pendingStat2 = "";
 // v6.8 每 5 秒读一次；有变化就重画、通知手机
 void batPoll() {
+  // 新连接认证通过：立刻补一帧电量。否则手机要等上一帧的 60 秒心跳才拿到值，
+  // 表现就是“已连接”但电量一直是 —。只在认证上升沿触发一次。
+  static bool authedBefore = false;
+  if (bleAuthed && !authedBefore) batForce = true;
+  authedBefore = bleAuthed;
   if (!pmuOK) return;
   unsigned long now = millis();
-  if (batAt && now - batAt < 5000) return;
+  if (!batForce && batAt && now - batAt < 5000) return;
   batAt = now;
+  const bool forced = batForce;
+  batForce = false;
   int s1 = pmuRead(0x00), s2 = pmuRead(0x01);
   if (s1 < 0 || s2 < 0) return;
   bool present = (s1 >> 3) & 1;
@@ -30,7 +37,7 @@ void batPoll() {
     if (onWaitScreen && page == 0 && !sliding) drawStatus();        // v7.2 只重画状态栏
     else if (inNav) navDirty = true;
   }
-  if (changed || now - batSentAt > 60000) {
+  if (changed || (forced && pct >= 0) || now - batSentAt > 60000) {
     batSentAt = now;
     pendingBat = "V," + String(batPct) + "," + String(batChg ? 1 : 0) + "," + String(usbIn ? 1 : 0) + "," + String(batMv);
   }

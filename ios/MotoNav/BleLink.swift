@@ -38,6 +38,7 @@ final class BleLink: NSObject, ObservableObject {
     @Published private(set) var verified = false
     private var buildingProbe = BleCapabilityProbe()
     private var buildingQueries: Int { buildingProbe.attempts }
+    private var batteryProbe = BleCapabilityProbe()
     private var txNotifyReady = false
     @Published private(set) var buildingsSupported = false
     @Published var isReady = false
@@ -97,6 +98,7 @@ final class BleLink: NSObject, ObservableObject {
             self?.syncPhoneClock()
             self?.checkConnectionSetup()
             self?.requestBuildingCapability()
+            self?.requestBatteryInfo()
             MusicBridge.shared.syncLyrics()
             MusicBridge.shared.pollMetadata()
             guard let self = self, self.isReady, self.queue.isEmpty, !self.bulkQ.hasData,
@@ -183,6 +185,7 @@ final class BleLink: NSObject, ObservableObject {
     private func attach(_ p: CBPeripheral) {
         isReady = false; txNotifyReady = false
         screenName=p.name ?? "MotoNav";screenBattery=nil;screenCharging=false
+        batteryProbe.reset()
         buildingsSupported = false
         mediaHIDSupported = false; mediaHIDReady = false; mediaHIDMode = false; mediaLyricsSupported = false; mediaLyricsActive = false; mediaAMSControls = 0; verified = false; buildingProbe.reset()
         MusicBridge.shared.resetAMS()
@@ -223,6 +226,14 @@ final class BleLink: NSObject, ObservableObject {
     }
 
     func retryBuildingCapability() { buildingProbe.reset(); requestBuildingCapability() }
+
+    /// 电量：连上主动问一次，圆屏立刻回一帧，不用等它的 60 秒心跳。
+    /// 还没拿到值就再问两次，覆盖“通知通道比认证晚打开”的时序。
+    private func requestBatteryInfo() {
+        guard batteryProbe.next(ready: isReady && txNotifyReady, supported: screenBattery != nil,
+                                now: Date().timeIntervalSinceReferenceDate) else { return }
+        sendOnce("#B?")
+    }
 
     var maxWrite: Int {
         guard let p = peripheral else { return 20 }
@@ -521,6 +532,7 @@ final class BleLink: NSObject, ObservableObject {
         phoneClock=PhoneClockSync()
         bulkQ.reset(); bulkBarrier.reset(); bulkWriteSerial += 1
         mapReceipt.reset();mapMeter.reset();lastWasCommand=false
+        requestBatteryInfo()                            // 电量：连上就问，别等圆屏 60 秒心跳
         if let b = lastState["#b"] { enqueue("#b", Data(b.utf8)) }
         for k in stateOrder where k != "#b" { if let v = lastState[k] { enqueue(k, Data(v.utf8)) } }
         for (slot, img) in lastImg { enqueueImage(slot: slot, w: img.w, h: img.h, data: img.data) }
@@ -536,7 +548,7 @@ final class BleLink: NSObject, ObservableObject {
 extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
     func centralManagerDidUpdateState(_ c: CBCentralManager) {
         if c.state != .poweredOn {
-            isReady = false; txNotifyReady = false; buildingsSupported = false; mediaHIDSupported = false; mediaHIDReady = false; mediaHIDMode = false; mediaLyricsSupported = false; mediaLyricsActive = false; mediaAMSControls = 0; verified = false; buildingProbe.reset()
+            isReady = false; txNotifyReady = false; buildingsSupported = false; mediaHIDSupported = false; mediaHIDReady = false; mediaHIDMode = false; mediaLyricsSupported = false; mediaLyricsActive = false; mediaAMSControls = 0; verified = false; buildingProbe.reset(); batteryProbe.reset()
         MusicBridge.shared.resetAMS()
         }
         switch c.state {
@@ -590,6 +602,7 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
         bulkQ.reset(); bulkBarrier.reset(); bulkWriteSerial += 1
         mapReceipt.reset();mapMeter.reset();lastWasCommand=false
         buildingsSupported = false
+        batteryProbe.reset()
         mediaHIDSupported = false; mediaHIDReady = false; mediaHIDMode = false; mediaLyricsSupported = false; mediaLyricsActive = false; mediaAMSControls = 0; verified = false; buildingProbe.reset(); txNotifyReady = false
         MusicBridge.shared.resetAMS()
         MapFeeder.shared.onBuildingCapability()
@@ -653,7 +666,7 @@ extension BleLink: CBCentralManagerDelegate, CBPeripheralDelegate {
         guard let raw = String(data: d, encoding: .utf8) else { return }
         let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if BleAuthenticatedReply.accepts(s), !verified {
-            verified = true; syncPhoneClock(force:true); buildingProbe.reset(); requestBuildingCapability(); Settings.shared.pushAll(); MapFeeder.shared.resendAll()
+            verified = true; syncPhoneClock(force:true); buildingProbe.reset(); requestBuildingCapability(); batteryProbe.reset(); requestBatteryInfo(); Settings.shared.pushAll(); MapFeeder.shared.resendAll()
         }
         if s == "U,1" {return}
         if s == "CAP,HID,1" {

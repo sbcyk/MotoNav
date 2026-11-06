@@ -8,6 +8,9 @@ bool batChg = false, usbIn = false;
 int batMv = 0;
 unsigned long batAt = 0, batSentAt = 0;
 String pendingBat = "";
+// 手机认证通过 / 主动查询时置位：下一次轮询立刻回一帧，不等 5 秒轮询和 60 秒心跳。
+// 只在主循环里读写（batPoll / handleText 都由 loop 驱动）。
+bool batForce = false;
 
 int pmuRead(uint8_t reg) {
   Wire.beginTransmission(PMU_ADDR);

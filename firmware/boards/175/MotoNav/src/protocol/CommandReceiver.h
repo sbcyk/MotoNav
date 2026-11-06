@@ -30,6 +30,7 @@ int hexVal(char c) {
 // 处理文字类消息
 void handleText(const String &m) {
   if(m=="#BC,1" || m=="#BC,0") {setRasterBuildingCarry(m=="#BC,1");return;}
+  if(m=="#B?") {batForce = true;return;}                 // 手机连上主动问电量：下一轮立刻回一帧
   if(m.startsWith("#TIME,")) {
     if(homeClock.receive(m.c_str(),millis())) {
       drawHomeClock();
