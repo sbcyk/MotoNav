@@ -47,15 +47,16 @@ HORSE_BOX = (0, 24, 92, 184)
 N_PTS = 150                                 # 马身上的粒子落点数量
 
 # ---- 赐福光柱：两态柱高不同（v2.3）----
-# 柱子是画进母版的死像素，直接抹会留洞。这里的做法是：把柱带里的"光"像素圈出来，
-# 先用周围像素扩散出一层背景当底，再按竖向 ramp 把光混回去——往上逐渐只剩底。
-# 等于让光自己散进空气里，而不是拿块灰去填。
+# 柱子是画进母版的死像素，整块抹掉会在天上留一块灰。只动"柱芯"：竖直连续 ≥BEAM_THICK 的
+# 暖色块，把它按**本行**的光晕色替换掉，混合量随高度推到 1——芯就淡进自己的光晕里，
+# 读起来是光散掉了，而不是被挖走。光环那种 1~3 px 的细线不满足"厚"，原样保留。
+# 底不能用二维扩散估：洞几乎占满柱带时，扩散会从带顶上方的冷色天空取色，填出来是灰的。
 BEAM_BAND = (138, 173, 18)                  # 柱带：x0, x1, 顶（源像素）；带内允许两态不同
-BEAM_FADE_OFF = (174, 96)                   # 坐火：y=174 以下不动，到 96 收完
-BEAM_FADE_ON = (174, 128)                   # 未坐火：收得更低，柱子更短
+BEAM_FADE_OFF = (110, 84)                   # 坐火（高）：84 以上芯已散尽，110 以下原样
+BEAM_FADE_ON = (140, 118)                   # 未坐火（矮）：柱顶再低一截，两态差 34 px
+BEAM_EDGE = 6                               # 估本行光晕色时，柱带左右各取几列
 BEAM_LIGHT = (22, 80)                       # 判定"光"的下限：r-b > 22 且 r > 80
 BEAM_THICK = 6                              # 竖直连续这么多像素才算"厚"（柱芯/光锥）；细线是光环，留着
-BEAM_GROW = 4                               # 估背景时洞再外扩几圈：紧贴洞边的是余晖，算进去底会偏亮
 
 
 def smoothstep(a, b, v):
@@ -64,96 +65,87 @@ def smoothstep(a, b, v):
     return t * t * (3.0 - 2.0 * t)
 
 
-def beam_cut(img, y_start, y_end):
-    """把赐福光柱从 y_end 往上收掉，y_start 以下原样。
+def beam_cut(img, y_full, y_top):
+    """把柱芯从 y_top 往上淡进本行光晕，y_full 以下原样。
 
-    只压"厚"的东西：竖直连续 6 px 以上的暖色块（柱芯和光锥）才算要收的光，
+    只动"厚"的东西：竖直连续 BEAM_THICK 以上的暖色块（柱芯和光锥），
     光环那种 1~3 px 的细线一律留着——光环是赐福的形态，抹掉就不像赐福了。
-    厚块先按邻域扩散出一层背景当底，再按 ramp 混回原像素，等于让光散进空气里。
+    每行取柱带左右两侧的中位色当"这一行没有柱芯时该有的亮度"，横向铺平，
+    再乘 smoothstep：y_full 处不动、y_top 处芯完全让位给光晕。
     """
     out = img.copy()
     p = out.load()
     x0, x1, y0 = BEAM_BAND
-    h, w = y_start - y0, x1 - x0
+    h, w = y_full - y0, x1 - x0
     if h <= 0 or w <= 0:
         return out
 
     def light(c):
         return c[0] - c[2] > BEAM_LIGHT[0] and c[0] > BEAM_LIGHT[1]
 
-    orig = [[p[x0 + i, y0 + j] for i in range(w)] for j in range(h)]
-    todo = [[False] * w for _ in range(h)]
+    core = [[0.0] * w for _ in range(h)]
     for i in range(w):                                    # 逐列找竖直厚块
         j = 0
         while j < h:
-            if not light(orig[j][i]):
+            if not light(p[x0 + i, y0 + j]):
                 j += 1
                 continue
             k = j
-            while k < h and light(orig[k][i]):
+            while k < h and light(p[x0 + i, y0 + k]):
                 k += 1
             if k - j >= BEAM_THICK:                       # 细线（光环、碎点）不动
                 for jj in range(j, k):
-                    todo[jj][i] = True
+                    core[jj][i] = 1.0
             j = k
-    if not any(any(r) for r in todo):
+    if not any(any(r) for r in core):
         return out
-    mask = [row[:] for row in todo]                       # 扩散会把 todo 吃掉，先留一份
-    # 估背景时把洞再往外扩 BEAM_GROW 圈：紧贴洞边的是光晕的余晖，算进去底就偏亮
-    g = BEAM_GROW
-    grown = [row[:] for row in mask]
-    for j in range(h):
-        for i in range(w):
-            if mask[j][i]:
-                for dj in range(-g, g + 1):
-                    for di in range(-g, g + 1):
-                        jj, ii = j + dj, i + di
-                        if 0 <= jj < h and 0 <= ii < w:
-                            grown[jj][ii] = True
-    todo = grown
-    bg = [[list(o) for o in row] for row in orig]
-    for _ in range(200):
-        nxt = [[False] * w for _ in range(h)]
-        moved = False
-        for j in range(h):
-            for i in range(w):
-                if not todo[j][i]:
-                    continue
-                acc = [0, 0, 0]
-                n = 0
-                for dj in (-1, 0, 1):
-                    for di in (-1, 0, 1):
-                        jj, ii = j + dj, i + di
-                        if (di or dj) and 0 <= jj < h and 0 <= ii < w and not todo[jj][ii]:
-                            c = bg[jj][ii]
-                            acc[0] += c[0]
-                            acc[1] += c[1]
-                            acc[2] += c[2]
-                            n += 1
-                if n:
-                    bg[j][i] = [acc[0] // n, acc[1] // n, acc[2] // n]
-                    moved = True
-                else:
-                    nxt[j][i] = True
-        todo = nxt
-        if not moved:
-            break
-    half = w * 0.5
+
+    # 每行的光晕底色：左右各取 BEAM_EDGE 列的中位数（中位数不会被残留的芯带跑），
+    # 再竖向 5 行平滑，免得逐行的颗粒在柱带里连成横纹。
+    rows = []
     for j in range(h):
         y = y0 + j
-        v = smoothstep(y_end, y_start, y)                 # 越往上越小
+        cols = [p[x, y] for x in range(x0, x0 + BEAM_EDGE)] + \
+               [p[x, y] for x in range(x1 - BEAM_EDGE, x1)]
+        rows.append([sorted(c[i] for c in cols)[len(cols) // 2] for i in range(3)])
+    halo = []
+    for j in range(h):
+        acc = [0.0, 0.0, 0.0]
+        n = 0
+        for k in range(max(0, j - 2), min(h, j + 3)):
+            for i in range(3):
+                acc[i] += rows[k][i]
+            n += 1
+        halo.append([acc[i] / n for i in range(3)])
+
+    # 芯的边缘半透明：3x3 均值，免得柱芯边界一步跳出硬边
+    soft = [[0.0] * w for _ in range(h)]
+    for j in range(h):
         for i in range(w):
-            if not mask[j][i]:
+            acc = 0.0
+            n = 0
+            for dj in (-1, 0, 1):
+                for di in (-1, 0, 1):
+                    jj, ii = j + dj, i + di
+                    if 0 <= jj < h and 0 <= ii < w:
+                        acc += core[jj][ii]
+                        n += 1
+            soft[j][i] = acc / n
+
+    for j in range(h):
+        y = y0 + j
+        a = 1.0 - smoothstep(y_top, y_full, y)           # y_full 不动，y_top 全让位
+        if a <= 0:
+            continue
+        f = halo[j]
+        for i in range(w):
+            m = soft[j][i] * a
+            if m <= 0.004:
                 continue
-            # 横向软边：柱带最外 8 px 逐步不吃，免得带边留下一条直边
-            hf = 1.0 - smoothstep(half - 8.0, half, abs(i + 0.5 - half))
-            a = (1.0 - v) * hf
-            if a <= 0:
-                continue
-            o, b = orig[j][i], bg[j][i]
-            p[x0 + i, y] = (clamp(o[0] + (b[0] - o[0]) * a),
-                            clamp(o[1] + (b[1] - o[1]) * a),
-                            clamp(o[2] + (b[2] - o[2]) * a))
+            o = p[x0 + i, y]
+            p[x0 + i, y] = (clamp(o[0] + (f[0] - o[0]) * m),
+                            clamp(o[1] + (f[1] - o[1]) * m),
+                            clamp(o[2] + (f[2] - o[2]) * m))
     return out
 
 
@@ -350,6 +342,7 @@ def main():
     mask = build_masks()
     off = build_off(master, empty, seated, mask)
     on = master
+    beam_y1 = max(BEAM_FADE_OFF[0], BEAM_FADE_ON[0])      # 两态改动都落在 [y0, beam_y1)
     off = beam_cut(off, *BEAM_FADE_OFF)                   # v2.3 坐火：柱子最高
     on = beam_cut(on, *BEAM_FADE_ON)                      # v2.3 未坐火：再短一截
 
@@ -366,7 +359,7 @@ def main():
             if a[x, y] != b[x, y]:
                 inside = (HORSE_BOX[0] <= x < HORSE_BOX[2] and HORSE_BOX[1] <= y < HORSE_BOX[3]) or \
                          (MAN_BOX[0] <= x < MAN_BOX[2] and MAN_BOX[1] <= y < MAN_BOX[3]) or \
-                         (BEAM_BAND[0] <= x < BEAM_BAND[1] and BEAM_BAND[2] <= y < BEAM_FADE_OFF[0])
+                         (BEAM_BAND[0] <= x < BEAM_BAND[1] and BEAM_BAND[2] <= y < beam_y1)
                 if not inside:
                     bad.append((x, y))
     if bad:
@@ -386,7 +379,7 @@ def main():
         f"#define HOME_BEAM_X0 {BEAM_BAND[0]}",
         f"#define HOME_BEAM_X1 {BEAM_BAND[1]}",
         f"#define HOME_BEAM_Y0 {BEAM_BAND[2]}",
-        f"#define HOME_BEAM_Y1 {BEAM_FADE_OFF[0]}",
+        f"#define HOME_BEAM_Y1 {beam_y1}",
         "",
         "// 起身：人所在矩形，纵向扫描从 HOME_MAN_Y1 扫到 HOME_MAN_Y0",
         f"#define HOME_MAN_X0 {MAN_BOX[0]}",
