@@ -33,6 +33,9 @@ struct ContentView: View {
     @AppStorage("voice_id") private var voiceID = ""
 
     @State private var query = ""
+    @FocusState private var searchFocused: Bool           // 输入框聚焦时把结果面板浮出来
+    @State private var searchDebounce: DispatchWorkItem?  // 边输入边查的防抖
+    @State private var keyboardTop: CGFloat = 0           // 键盘顶边（全局 y），0 = 没弹
     @State private var naviTab = 0                       // 导航页卡片：0 导航模式，1 巡航模式
     @State private var showNavi = false
     @State private var settingsPush: SettingsHubItem?   // 缺密钥时直接把「通用」推开，不再弹填写页
@@ -117,6 +120,17 @@ struct ContentView: View {
         .onChange(of: page) { now in
             // 没退「通用」就直接点了别的 tab：清掉待推项，否则下次回到「我的」会被再推一次
             if now != 3 { settingsPush = nil }
+            // 换页就把搜索浮层收掉，别让它盖在新页面上
+            closeSearch()
+        }
+        // 搜索结果面板要贴在搜索框下方、又不越过屏幕底部，得知道键盘占了多少
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+            guard let f = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            // 收起时这个 y 会落到屏幕外，后面和页面底取 min 会被截住，不用另判
+            keyboardTop = f.minY
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardTop = 0
         }
     }
 
@@ -156,41 +170,99 @@ struct ContentView: View {
     }
 
     private func pages(wide: Bool) -> some View {
-        ScrollView {
-            Group {
-                if page == 0 && wide {
-                    // 宽屏：左侧完成摩托规划，右侧放收藏地点与轨迹入口
-                    HStack(alignment: .top, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 16) {
-                            header
-                            naviModeCard
-                        }
-                        VStack(alignment: .leading, spacing: 16) {
-                            GlassChip(title: "收藏地点", icon: "mappin.and.ellipse") { showFavorites = true }
-                            GlassChip(title: "导航轨迹", icon: "location.north.line", tint: Self.cyan) { page = 1 }
-                        }
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if page == 0 {
-                            header
-                            naviModeCard
-                        } else if page == 1 {
-                            ridesTabContent
-                        } else if page == 2 {
-                            deviceTabContent
+        Group {
+            if page == 0 && !wide {
+                // 导航页固定一屏：上半搜索，下半轨迹卡吃满剩余高度，整页不再上下滑
+                naviPage
+            } else {
+                ScrollView {
+                    Group {
+                        if page == 0 && wide {
+                            // 宽屏：左侧完成摩托规划，右侧放收藏地点与轨迹入口
+                            HStack(alignment: .top, spacing: 16) {
+                                VStack(alignment: .leading, spacing: 16) {
+                                    header
+                                    naviModeCard
+                                }
+                                VStack(alignment: .leading, spacing: 16) {
+                                    GlassChip(title: "收藏地点", icon: "mappin.and.ellipse") {
+                                        closeSearch()
+                                        showFavorites = true
+                                    }
+                                    GlassChip(title: "导航轨迹", icon: "location.north.line", tint: Self.cyan) { page = 1 }
+                                }
+                            }
                         } else {
-                            settingsTabContent
+                            VStack(alignment: .leading, spacing: 16) {
+                                if page == 1 {
+                                    ridesTabContent
+                                } else if page == 2 {
+                                    deviceTabContent
+                                } else {
+                                    settingsTabContent
+                                }
+                            }
                         }
-                    }
+                    // 内容滚过悬浮玻璃条后方，留白 ≈ 条高 + 安全区
+                    }.padding(.horizontal, 16).padding(.top, 16)
+                        .padding(.bottom, page == 2 ? 104 : 128)     // 设备页一屏放得下，留白收窄
                 }
-            // 内容滚过悬浮玻璃条后方，留白 ≈ 条高 + 安全区
-            }.padding(.horizontal, 16).padding(.top, 16)
-                .padding(.bottom, page == 2 ? 104 : 128)     // 设备页一屏放得下，留白收窄
+                .scrollBounceBehaviorIfFits()
+            }
         }
-        .scrollBounceBehaviorIfFits()
         .frame(maxWidth: wide ? 1080 : .infinity)
         .frame(maxWidth: .infinity)
+        // 搜索浮层挂在这一层：竖屏的导航页和宽屏的两栏都能贴到各自的搜索框下面。
+        // 位置走全局坐标再换算成局部偏移，不用 coordinateSpace(name:)，那个在 iOS 17 已废弃。
+        .overlayPreferenceValue(SearchFieldAnchorKey.self) { anchor in
+            GeometryReader { g in
+                let origin = g.frame(in: .global)
+                if anchor.width > 0 {
+                    let top = anchor.maxY - origin.minY + 8
+                    // 键盘弹着就以键盘顶为底：这时 pages 被键盘压过，g.size 不能反映真实底边
+                    let bottom = keyboardTop > 0 ? keyboardTop - origin.minY - 12 : g.size.height - 92
+                    let room = bottom - top                             // 面板最多能有多高
+                    // 高度按内容算：状态行 54，一行 52，超过 8 条才轮到面板自己滚。
+                    // 不能直接用 room，否则只有一条结果时也是一整块空白卡片。
+                    let statusRow: CGFloat = (!search.status.isEmpty && search.results.isEmpty) ? 54 : 0
+                    let rowsH = CGFloat(min(search.results.count, 8)) * 52
+                    let visible = searchPanelVisible && room >= 52
+                    searchResultsPanel
+                        .frame(width: anchor.width,
+                               height: max(52, min(min(420, room), statusRow + rowsH)))
+                        .offset(x: anchor.minX - origin.minX, y: top)
+                        .opacity(visible ? 1 : 0)
+                        .allowsHitTesting(visible)
+                        .accessibilityHidden(!visible)     // opacity 0 读屏仍会读到，必须显式藏掉
+                }
+            }
+        }
+    }
+
+    // MARK: 导航页（固定一屏）
+    /// 导航页不再放 ScrollView：标题 + 导航卡 + 轨迹概览卡，卡与卡之间留 14，
+    /// 轨迹卡吃掉剩下的高度。搜索结果是浮层，不参与这里的排版。
+    private var naviPage: some View {
+        GeometryReader { geo in
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                naviModeCard
+                rideGlanceCard
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)                     // 加上 header 自带的 8，和其余 tab 的 16 对齐
+            .padding(.bottom, 92)                 // 悬浮玻璃条的落点，不让内容钻到它下面
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+        }
+        .clipped()                                    // 极端字号下内容溢出时别画到悬浮玻璃条上
+        // 只让导航页忽略键盘：不加的话键盘一弹，轨迹卡会被压到最小高度。
+        // 别的页（比如密钥输入）要保留系统的避让，所以不能提到 pages 那一层。
+        .ignoresSafeArea(.keyboard, edges: .bottom)
+    }
+
+    /// 搜索浮层什么时候在：聚焦且有内容（结果或“搜索中/没找到”这类状态）
+    private var searchPanelVisible: Bool {
+        searchFocused && (!search.results.isEmpty || !search.status.isEmpty)
     }
 
     private var ridesTabContent: some View {
@@ -460,38 +532,70 @@ struct ContentView: View {
         .onChange(of: navi.cruising) { now in if now { naviTab = 1 } }
         // 切 tab / 重进页面时 naviTab 会回到 0，巡航中要重新落到那一页
         .onAppear { if navi.cruising { naviTab = 1 } }
-        .onChange(of: naviTab) { _ in hideKeyboard() }   // 搜索框还弹着键盘时切到巡航，先收起来
+        .onChange(of: naviTab) { _ in closeSearch() }   // 切到巡航时把搜索浮层和键盘一起收掉
     }
 
-    /// 卡里的「导航模式」：搜索目的地、两个快捷入口和搜索结果卡片。
+    /// 卡里的「导航模式」：搜索目的地、缺 Key 提示、两个快捷入口。
+    /// 输入即查（防抖 0.4 秒），不再按「搜索」；结果改成搜索框下方的浮层，不把这里的内容顶下去。
     private var naviModeBody: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(AppTheme.sub)
+                    .accessibilityHidden(true)
                 TextField("搜索地点、地址", text: $query)
                     .textFieldStyle(.plain)
-                    .padding(12)
-                    .frame(minHeight: 46)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.sunken))
+                    .focused($searchFocused)
                     .foregroundColor(AppTheme.text)
                     .submitLabel(.search)
-                    .onSubmit { if !needAmapKey() { search.search(query) } }
-                    .onChange(of: query) { if $0.isEmpty { search.clear() } }
-                Button("搜索") {
-                    hideKeyboard()
-                    if !needAmapKey() { search.search(query) }
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .onSubmit { runSearchNow() }          // 键盘上的「搜索」仍然立刻查一次
+                if !query.isEmpty {
+                    Button {
+                        query = ""
+                        search.clear()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(AppTheme.sub.opacity(0.65))
+                            .frame(minWidth: 44, minHeight: 44)   // 触控热区按规范给满，图标本身只有 16
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("清空搜索")
                 }
-                .font(.headline)
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .frame(minHeight: 46)
-                .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.accent))
-                .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .opacity(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 46)
+            .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.sunken))
+            .background(SearchFieldAnchor())
+            .onChange(of: query) { text in scheduleSearch(text) }
+
+            // 没密钥时边打字边查是静默失败的，这里明说一句，点一下直接去填
+            if settings.amapKeyInUse.isEmpty {
+                Button { openKeySettings() } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("搜索需要高德密钥，点这里去填")
+                            .font(.caption.weight(.semibold))
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundColor(AppTheme.orange)
+                    .frame(minHeight: 44)                 // 一行提示也是可点入口，热区按 44 来
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
 
             // 快捷入口并排一行，不再用“文字链接 + 长段说明”堆在一起
             HStack(spacing: 10) {
-                naviQuickAction(title: "收藏地点", icon: "mappin.and.ellipse") { showFavorites = true }
+                naviQuickAction(title: "收藏地点", icon: "mappin.and.ellipse") {
+                    closeSearch()
+                    showFavorites = true
+                }
                 naviQuickAction(title: shareBusy ? "正在读取…" : "导入高德路线",
                                 icon: "doc.on.clipboard", enabled: !shareBusy) { pasteShare() }
             }
@@ -509,19 +613,113 @@ struct ContentView: View {
                     showShareVerification = true
                 }
             }
-            if !search.status.isEmpty {
-                Text(Self.userMessage(search.status))
-                    .font(.footnote)
-                    .foregroundColor(AppTheme.sub)
-            }
-
-            if !search.results.isEmpty {
-                VStack(spacing: 8) {
-                    ForEach(search.results.prefix(8)) { p in searchResultCard(p) }
-                }
-                .padding(.top, 2)
-            }
         }
+    }
+
+    /// 边输入边查：0.4 秒没再动键盘才发一次，拼音输入的每个字母不会各查一次高德。
+    private func scheduleSearch(_ text: String) {
+        searchDebounce?.cancel()
+        // 选完地点后程序会把名字写回输入框，那一次不算用户输入，不查
+        guard searchFocused else { return }
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { search.clear(); return }
+        // 没填高德 key 就只提示，不在打字时把人踢去设置页
+        guard !settings.amapKeyInUse.isEmpty else { search.clear(); return }
+        let work = DispatchWorkItem { search.search(t) }
+        searchDebounce = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+    }
+
+    /// 收起搜索：停掉待发的查询、注销焦点、收键盘，浮层跟着消失
+    private func closeSearch() {
+        searchDebounce?.cancel()
+        searchFocused = false
+        hideKeyboard()
+    }
+
+    /// 键盘的「搜索」键：不等防抖，立刻查
+    private func runSearchNow() {
+        searchDebounce?.cancel()
+        let t = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { search.clear(); return }
+        if needAmapKey() { return }
+        search.search(t)
+    }
+
+    /// 搜索结果浮层：贴在搜索框下方，最多到键盘顶 / 页面底，内容多时自己滚。
+    private var searchResultsPanel: some View {
+        VStack(spacing: 0) {
+            if !search.status.isEmpty && search.results.isEmpty {
+                HStack(spacing: 8) {
+                    if search.status.hasPrefix("搜索中") {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AppTheme.sub)
+                            .accessibilityHidden(true)
+                    }
+                    Text(Self.userMessage(search.status))
+                        .font(.footnote)
+                        .foregroundColor(AppTheme.sub)
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14)
+                .frame(minHeight: 54, alignment: .leading)
+            }
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(Array(search.results.enumerated()), id: \.element.id) { idx, p in
+                        Button { choose(p) } label: { searchPanelRow(p) }
+                            .buttonStyle(.plain)
+                        if idx < search.results.count - 1 {
+                            // 和行内图标右边对齐：行内边距 12 + 图标 26 + 间距 10
+                            Divider().padding(.leading, 48).opacity(0.35)
+                        }
+                    }
+                }
+            }
+            .keepKeyboardOnScroll()      // 滚结果时别把键盘收掉，收掉浮层会跟着消失
+        }
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(AppTheme.card))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .stroke(AppTheme.stroke.opacity(0.55), lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.16), radius: 18, x: 0, y: 8)
+    }
+
+    /// 浮层里的一行：比正文里的结果卡更紧，一屏能多看两条。
+    private func searchPanelRow(_ p: SearchService.Place) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: "mappin")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(AppTheme.accent)
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(AppTheme.accentSoft))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(p.name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(AppTheme.text)
+                    .lineLimit(1)
+                if !p.address.isEmpty {
+                    Text(p.address)
+                        .font(.caption)
+                        .foregroundColor(AppTheme.sub)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 4)
+            if let d = distanceTo(p) {
+                Text(d).font(.caption.weight(.semibold)).foregroundColor(AppTheme.accent).fixedSize()
+            }
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(AppTheme.sub.opacity(0.5))
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 52, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     /// 导航卡里的快捷入口：灰底圆角、整块可点。
@@ -542,43 +740,97 @@ struct ContentView: View {
         .opacity(enabled ? 1 : 0.5)
     }
 
-    /// 搜索结果：一条一张卡片，点整张卡片进规划，不再用文字 + 分隔线。
-    private func searchResultCard(_ p: SearchService.Place) -> some View {
-        Button { choose(p) } label: {
-            HStack(alignment: .center, spacing: 12) {
-                Image(systemName: "mappin")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(AppTheme.accent)
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(AppTheme.accentSoft))
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(p.name)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(AppTheme.text)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    if !p.address.isEmpty {
-                        Text(p.address)
-                            .font(.caption)
-                            .foregroundColor(AppTheme.sub)
-                            .lineLimit(1)
+    /// 导航页下半：轨迹概览。卡片吃掉剩余高度，缩略图弹性伸缩，页面不整体滑。
+    /// 卡片够高才补「更早的记录」，那一段在卡内自己滚；不够高就只留缩略图和最近一次。
+    private var rideGlanceCard: some View {
+        GeometryReader { g in
+            // 108 = 上下内边距 28 + 标题行 44 + 两段间距 20 + 指标行 16；记录中多一行占 26
+            let fixedH: CGFloat = 108 + (rides.active == nil ? 0 : 26)
+            let earlier = max(0, rides.rides.count - 1)
+            let cap = 12                                          // 卡里最多列 12 条更早的
+            let listRoom = g.size.height - fixedH - 110 - 10       // 缩略图至少留 110，轨迹形状才看得清
+            let showList = earlier > 0 && listRoom >= 72
+            let listH = showList ? min(150, min(listRoom, CGFloat(min(earlier, cap)) * 72)) : 0
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("轨迹").font(.headline).foregroundColor(AppTheme.text)
+                        if !rides.rides.isEmpty {
+                            Text(monthRideSummary).font(.caption).foregroundColor(AppTheme.sub)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    GlassChip(title: "全部", icon: "list.bullet", tint: Self.cyan, compact: true) { showRides = true }
+                }
+
+                if let active = rides.active {
+                    HStack(spacing: 6) {
+                        Circle().fill(AppTheme.green).frame(width: 7, height: 7)
+                        Text("记录中 · \(active.mode) · \(NaviBridge.distText(Int(active.meters)))")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(AppTheme.accent)
                     }
                 }
-                Spacer(minLength: 6)
-                if let d = distanceTo(p) {
-                    Text(d).font(.caption.weight(.semibold)).foregroundColor(AppTheme.accent).fixedSize()
+
+                if let latest = rides.rides.first {
+                    NavigationLink(destination: RideDetailView(ride: latest)) {
+                        RideTrackMapView(fixes: latest.fixes, interactive: false, lineWidth: 3, compactMarkers: true)
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 84, maxHeight: .infinity)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .contentShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
+                    HStack(spacing: 6) {
+                        Text("最近一次").font(.caption.weight(.semibold)).foregroundColor(AppTheme.text)
+                        Text("\(timeLabel(latest.started)) · \(NaviBridge.distText(Int(latest.meters))) · \(durationText(latest))")
+                            .font(.caption).foregroundColor(AppTheme.sub).lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                } else {
+                    VStack(spacing: 6) {
+                        Image(systemName: "location.north.line")
+                            .font(.system(size: 26, weight: .semibold))
+                            .foregroundColor(AppTheme.sub.opacity(0.7))
+                        Text(rides.active == nil ? "还没有轨迹" : "这条轨迹正在记录")
+                            .font(.subheadline.weight(.semibold)).foregroundColor(AppTheme.text)
+                        Text(rides.active == nil
+                             ? "真实导航或巡航开始时自动记录，模拟导航不记。"
+                             : "结束导航或巡航后，缩略图和里程会出现在这里。")
+                            .font(.caption).foregroundColor(AppTheme.sub)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(AppTheme.sub.opacity(0.55))
+
+                // 更早的记录在卡片里自己滚，不把整页顶长
+                if showList {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(Array(rides.rides.dropFirst().prefix(cap).enumerated()), id: \.element.id) { idx, ride in
+                                NavigationLink(destination: RideDetailView(ride: ride)) {
+                                    RideListRow(ride: ride)
+                                        .padding(.vertical, 2)
+                                }
+                                .buttonStyle(.plain)
+                                if idx < min(earlier, cap) - 1 {
+                                    Divider().padding(.leading, 76).opacity(0.3)
+                                }
+                            }
+                        }
+                    }
+                    .keepKeyboardOnScroll()
+                    .frame(height: listH)
+                }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 14).fill(AppTheme.sunken))
-            .contentShape(RoundedRectangle(cornerRadius: 14))
+            .padding(14)
+            .frame(width: g.size.width, height: g.size.height, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: 18).fill(AppTheme.card))
         }
-        .buttonStyle(.plain)
+        .frame(minHeight: 200, maxHeight: .infinity)
+        // 浮层盖在这张卡上方；点卡片空白处顺手收掉浮层，不然用户会以为卡点不动了
+        .contentShape(Rectangle())
+        .onTapGesture { if searchFocused { closeSearch() } }
     }
 
     /// 「收藏地点」：收藏地点（自定义标签、按标签筛选、改/删标签）与最近搜索都收进这个弹窗。
@@ -601,15 +853,18 @@ struct ContentView: View {
     /// 搜索、收藏和最近目的地统一进入摩托车路线规划。
     private func choose(_ p: SearchService.Place) {
         guard !navi.navigating else {
+            // 先把浮层收掉，否则这句提示会被结果面板盖住
+            closeSearch()
             shareStatus = "导航仍在运行；如需更换目的地，请先结束导航"
             return
         }
         guard !independent.running else {
+            closeSearch()
             shareStatus = "请先结束当前摩托车导航"
             return
         }
         search.clear()
-        hideKeyboard()
+        closeSearch()             // 停查询、收浮层、收键盘
         query = p.name
         shareStatus = ""
         History.shared.add(p)
@@ -621,6 +876,7 @@ struct ContentView: View {
 
     /// 读剪贴板里的高德分享链接，还原路线后按它规划
     private func pasteShare() {
+        closeSearch()             // 导入的提示写在卡片里，别让搜索浮层压在上面
         guard let t = UIPasteboard.general.string, AmapShare.findUrl(t) != nil else {
             shareStatus = "剪贴板里没有高德的分享链接：先在高德里打开路线 → 分享 → 复制链接"
             return
@@ -630,8 +886,10 @@ struct ContentView: View {
 
     /// 导入高德分享的路线（剪贴板粘贴，或者从高德“分享到导一导”过来）
     private func importShare(_ t: String) {
-        guard AmapShare.findUrl(t) != nil else { shareStatus = "分享的内容里没有高德链接"; return }
-        if navi.navigating || WebMotorSession.shared.running { shareStatus = "正在导航：先结束导航，再导入分享的路线"; return }
+        guard AmapShare.findUrl(t) != nil else { closeSearch(); shareStatus = "分享的内容里没有高德链接"; return }
+        if navi.navigating || WebMotorSession.shared.running {
+            closeSearch(); shareStatus = "正在导航：先结束导航，再导入分享的路线"; return
+        }
         hideKeyboard()
         shareBusy = true
         shareStatus = "正在读取高德分享的路线…"
@@ -1258,6 +1516,24 @@ struct FavoritesSheet: View {
 
 // MARK: - 小组件
 
+/// 搜索框在屏幕上的位置（全局坐标）。结果浮层靠它贴到输入框正下方，不用写死坐标。
+private struct SearchFieldAnchorKey: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if next.width > 0 && next.height > 0 { value = next }
+    }
+}
+
+private struct SearchFieldAnchor: View {
+    var body: some View {
+        GeometryReader { g in
+            Color.clear.preference(key: SearchFieldAnchorKey.self,
+                                   value: g.frame(in: .global))
+        }
+    }
+}
+
 struct CardView<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
@@ -1293,6 +1569,11 @@ private extension View {
     /// 内容一屏放得下时不要回弹，避免看起来还能再滑一点。
     @ViewBuilder func scrollBounceBehaviorIfFits() -> some View {
         if #available(iOS 16.4, *) { scrollBounceBehavior(.basedOnSize) } else { self }
+    }
+
+    /// 滑动列表时不收键盘。iOS 16 起 ScrollView 默认一滚就收，搜索浮层会跟着消失。
+    @ViewBuilder func keepKeyboardOnScroll() -> some View {
+        if #available(iOS 16.0, *) { self.scrollDismissesKeyboard(.never) } else { self }
     }
 }
 
