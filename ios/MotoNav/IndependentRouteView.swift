@@ -25,19 +25,29 @@ final class IndependentPlanner:ObservableObject {
     func plan(_ mode:IndependentMode){
         guard !WebMotorSession.shared.running,!NaviBridge.shared.navigating,!NaviBridge.shared.cruising else{message="请先结束当前导航或巡航";return}
         guard !Settings.shared.keysMissing else{message="请先填写自己的高德 iOS Key";return}
-        let origin:MotorPoint
-        if let start=start{origin=start}else{
-            guard let fix=LocationService.shared.location,fix.horizontalAccuracy>=0,fix.horizontalAccuracy<=100,abs(fix.timestamp.timeIntervalSinceNow)<15 else{
-                message="当前位置尚未就绪，请等待定位或手动选择起点";LocationService.shared.start();return
-            }
-            let g=MapGeo.wgsToGcj(fix.coordinate.latitude,fix.coordinate.longitude)
-            origin=MotorPoint(lat:g.lat,lng:g.lng,name:"我的位置")
-        }
         guard let end=end else{message="请选择目的地";return}
         invalidate();let token=generation
-        let request=MotorRequest(start:origin,end:end,vias:mode == .bicycle ? []:vias,bicycle:mode == .bicycle)
         busy=true;message="正在规划\(mode.rawValue)路线…"
         task=Task { @MainActor [weak self] in
+            // v1.2 起步不再依赖常驻定位：没有手动起点就现等一次定位，等待期间保持 busy（页面显示转圈）
+            let origin:MotorPoint
+            let manualStart=self?.start          // 显式取一次：self?.start 是双重可选，直接 if let 只解一层
+            if let start=manualStart{
+                origin=start
+            }else{
+                self?.message="正在定位…"
+                let fix=await LocationService.shared.currentFix()
+                guard let self=self,self.generation==token,!Task.isCancelled else{return}
+                guard let fix=fix else{
+                    self.busy=false
+                    self.message=LocationService.shared.isAuthorized ? "定位超时，可手动选择起点后重试" : "没有定位权限，请在系统设置里允许定位，或手动选择起点"
+                    return
+                }
+                let g=MapGeo.wgsToGcj(fix.coordinate.latitude,fix.coordinate.longitude)
+                origin=MotorPoint(lat:g.lat,lng:g.lng,name:"我的位置")
+                self.message="正在规划\(mode.rawValue)路线…"
+            }
+            let request=MotorRequest(start:origin,end:end,vias:mode == .bicycle ? []:vias,bicycle:mode == .bicycle)
             do{
                 let result=try await MotorRoutes.load(request)
                 guard let self=self,self.generation==token,!Task.isCancelled else{return}
@@ -118,7 +128,7 @@ struct IndependentPlannerView:View {
         .sheet(isPresented:$login){MotorLoginView(page:nil)}
         .onAppear{
             guard !loaded else{return};loaded=true
-            LocationService.shared.start()
+            LocationService.shared.refresh()
             if let destination=initialDestination {
                 model.invalidate()
                 model.end=MotorPoint(lat:destination.lat,lng:destination.lng,name:destination.name)
@@ -151,8 +161,20 @@ struct IndependentPlannerView:View {
         if let fix=location.location,fix.horizontalAccuracy>=0,fix.horizontalAccuracy<=100,abs(fix.timestamp.timeIntervalSinceNow)<15{
             waitingForInitialFix=false
             model.plan(.motorcycle)
-        }else{
+        }else if !waitingForInitialFix{
             waitingForInitialFix=true
+            // v1.2 定位改成单次取点：这里主动等一次。单次失败不会再有 @Published 更新把它救回来，
+            // 所以必须带超时收尾，否则会一直停在“等待当前位置后自动规划…”
+            Task { @MainActor in
+                let fix=await LocationService.shared.currentFix()
+                guard self.waitingForInitialFix,!self.model.busy else{return}
+                self.waitingForInitialFix=false
+                if fix == nil{
+                    self.model.message=LocationService.shared.isAuthorized ? "定位超时，请手动选择起点" : "没有定位权限，请在系统设置里允许定位，或手动选择起点"
+                }else{
+                    self.model.plan(.motorcycle)
+                }
+            }
         }
     }
     private var selectedRoute:MotorRoute?{model.routes.indices.contains(model.selected) ? model.routes[model.selected]:nil}

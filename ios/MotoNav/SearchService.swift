@@ -155,41 +155,132 @@ final class History: ObservableObject {
 
 /// 手机当前位置（搜索时优先附近、查天气、规划路线起点用）。导航中直接用高德导航的定位。
 /// iOS v0.3 巡航模式时切成高精度、锁屏后台也继续定位，位置交给 NaviBridge（小地图、车速、测速牌）。
+/// v1.2 起定位只有两档：需要时单次取点（requestLocation，答完即停）和导航/巡航时的连续定位。
+/// 不再“一启动就一直定位”，灵动岛上的定位指示因此只在真正导航时出现。
 final class LocationService: NSObject, ObservableObject, CLLocationManagerDelegate {
     static let shared = LocationService()
     private let lm = CLLocationManager()
+    private let coarseFilter: CLLocationDistance = 30
     @Published var location: CLLocation?
+
+    /// 导航/巡航期间为 true；其余时间一律不连续定位
+    private(set) var navigating = false
+    /// 正在等一次定位的调用方（规划、搜索、天气共用，同一时刻只有一个）
+    private var pending: CheckedContinuation<CLLocation?, Never>?
+    private var pendingTimeout: DispatchWorkItem?
+    /// 授权弹窗还没回来，用户点了同意就补一次取点
+    private var wantsFixAfterAuth = false
 
     override init() {
         super.init()
         lm.delegate = self
         lm.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        lm.distanceFilter = coarseFilter
     }
 
-    func start() {
-        lm.requestWhenInUseAuthorization()
-        lm.startUpdatingLocation()
+    /// 已经拿到定位权限（没授权时 currentFix 会立刻返回 nil，提示文案要分开写）
+    var isAuthorized: Bool {
+        lm.authorizationStatus == .authorizedWhenInUse || lm.authorizationStatus == .authorizedAlways
     }
 
-    /// 巡航时打开：高精度、后台也继续
-    func setPrecise(_ on: Bool) {
-        lm.desiredAccuracy = on ? kCLLocationAccuracyBestForNavigation : kCLLocationAccuracyHundredMeters
+    /// 补一次位置（启动预热、搜索、天气用）。定位器答完即停，不会常驻。
+    func refresh() {
+        guard !navigating else { return }                     // 导航中已有连续定位
+        switch lm.authorizationStatus {
+        case .notDetermined:
+            wantsFixAfterAuth = true
+            lm.requestWhenInUseAuthorization()
+        case .authorizedWhenInUse, .authorizedAlways:
+            requestOnce()
+        default:
+            break
+        }
+    }
+
+    /// 要一个“现在的位置”：够新就直接给；否则发一次单次定位并等，超时或没授权返回 nil。
+    /// 调用方负责在这段等待期间显示加载态（规划、搜索、天气都这么用）。
+    func currentFix(timeout: TimeInterval = 6, maxAge: TimeInterval = 15) async -> CLLocation? {
+        if let fix = usable(location, maxAge: maxAge) { return fix }
+        let auth = lm.authorizationStatus
+        if auth == .denied || auth == .restricted { return nil }
+        if pending != nil { return usable(location, maxAge: 0) }   // 已经有调用方在等，不重复开定位
+        if auth == .notDetermined {
+            wantsFixAfterAuth = true
+            lm.requestWhenInUseAuthorization()
+        } else if !navigating {
+            // 导航中不能调 requestLocation：它会掐断 startUpdatingLocation 的连续定位
+            requestOnce()
+        }
+        return await withCheckedContinuation { (cont: CheckedContinuation<CLLocation?, Never>) in
+            pending = cont
+            let work = DispatchWorkItem { [weak self] in self?.resolvePending(nil) }
+            pendingTimeout = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: work)
+        }
+    }
+
+    /// 导航/巡航开始：连续、高精度、锁屏也继续
+    func beginNavigation() {
+        guard !navigating else { return }
+        navigating = true
+        wantsFixAfterAuth = false
+        lm.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         lm.distanceFilter = kCLDistanceFilterNone
-        lm.activityType = on ? (WebMotorSession.shared.running && WebMotorSession.shared.route?.request.bicycle == true ? .fitness : .automotiveNavigation) : .other
-        lm.pausesLocationUpdatesAutomatically = !on
-        lm.allowsBackgroundLocationUpdates = on
+        lm.activityType = (WebMotorSession.shared.running && WebMotorSession.shared.route?.request.bicycle == true) ? .fitness : .automotiveNavigation
+        lm.pausesLocationUpdatesAutomatically = false
+        lm.allowsBackgroundLocationUpdates = true
         lm.startUpdatingLocation()
+    }
+
+    /// 导航/巡航结束：先撤后台资格再停，否则灵动岛的定位指示会残留
+    func endNavigation() {
+        guard navigating else { return }
+        navigating = false
+        lm.allowsBackgroundLocationUpdates = false
+        lm.stopUpdatingLocation()
+        lm.pausesLocationUpdatesAutomatically = true
+        lm.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        lm.distanceFilter = coarseFilter
+        lm.activityType = .other
+    }
+
+    private func requestOnce() {
+        lm.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        lm.distanceFilter = coarseFilter
+        lm.requestLocation()
+    }
+
+    private func usable(_ fix: CLLocation?, maxAge: TimeInterval) -> CLLocation? {
+        guard let fix = fix, fix.horizontalAccuracy >= 0, fix.horizontalAccuracy <= 100 else { return nil }
+        if maxAge > 0, -fix.timestamp.timeIntervalSinceNow > maxAge { return nil }
+        return fix
+    }
+
+    private func resolvePending(_ fix: CLLocation?) {
+        pendingTimeout?.cancel(); pendingTimeout = nil
+        guard let cont = pending else { return }
+        pending = nil                                          // 先清空再唤醒，超时和回调不会重复 resume
+        cont.resume(returning: fix)
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        location = locations.last
-        if let l = locations.last { RideRecorder.shared.fix(l); WebMotorSession.shared.onFix(l) }
-        if NaviBridge.shared.cruising, let l = locations.last { NaviBridge.shared.onCruiseLocation(l) }
+        guard let l = locations.last else { return }
+        location = l
+        resolvePending(l)
+        RideRecorder.shared.fix(l); WebMotorSession.shared.onFix(l)
+        if NaviBridge.shared.cruising { NaviBridge.shared.onCruiseLocation(l) }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        // 首次定位偶尔给一次 locationUnknown，iOS 自己还会再试；别的错误直接让等待方拿到 nil
+        if (error as? CLError)?.code == .locationUnknown { return }
+        resolvePending(nil)
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        if manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways {
-            manager.startUpdatingLocation()
-        }
+        let ok = manager.authorizationStatus == .authorizedWhenInUse || manager.authorizationStatus == .authorizedAlways
+        guard ok else { resolvePending(nil); wantsFixAfterAuth = false; return }
+        if navigating { manager.startUpdatingLocation(); return }   // 只在导航期间续上
+        if wantsFixAfterAuth { wantsFixAfterAuth = false; requestOnce() }
     }
 }
