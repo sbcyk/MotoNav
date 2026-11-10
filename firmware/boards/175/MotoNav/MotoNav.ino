@@ -20,6 +20,7 @@
 #include "src/pages/ArrivalAnimation.h"
 #include "src/pages/IncomingCall.h"
 #include "src/pages/WeatherPage.h"
+#include "src/pages/HomeBand.h"     // 要在 WeatherPage 之后：信息带读取 wxIcon / wxTemp / wxHave
 #include "src/pages/PageNavigation.h"
 #include "src/input/Buttons.h"
 #include "src/map/MapState.h"

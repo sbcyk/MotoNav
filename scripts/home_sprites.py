@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""生成首页素材：黄昏赐福两态（未连接独坐 / 已连接站着牵马），共用一张 256 色调色板。
+"""生成首页素材：黄昏赐福两态（未连接独坐 / 已连接起身牵马），共用一张 256 色调色板。
 
 素材来源都在 `assets/reference/`：
-- `home-standing.png`       母版：站着牵马的褪色者、赐福火、峡谷、王城、黄金树。
-                            v2.2 起它同时是两态的唯一背景来源——连接态直接用它。
-- `home-standing-empty.png` 同一张图把人和马抠掉后由 AI 补全的空场景（草坡、岩壁、天空）。
-- `home-seated.png`         单独生成的坐姿褪色者，平涂底色，色键抠图后贴进空场景。
+- `home-v3-standing.png` 已连接态：站着牵马，黄金树横跨顶部、王城带拱桥与纵深。
+- `home-v3-seated.png`   未连接态：同源生成，只把人改成独坐、马去掉，其余构图不动。
 
-**核心约束：两态只有“人和马”那一块不同，其余像素逐像素一致。**
-做法：母版裁到 233 后，只把“人马蒙版”里的像素换成空场景＋坐姿人，蒙版外一律复制母版；
+**核心约束：人马矩形与赐福柱带之外，两态逐像素一致。**
+做法：以母版为底，只把这两块的像素换成另一张图的（边缘高斯羽化），区外一律复制母版；
 最后两张图用同一张调色板、同一个 Bayer 抖动场量化——偏移只跟坐标有关，相同 RGB 必得
 相同索引，固件里才能用“索引相等”判断背景、只重绘那一小块。
 
@@ -20,133 +18,31 @@ from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
 S = 233                                     # 底图边长
 OUT = 466                                   # 显示边长（固件按 2 倍放大）
 
-# ---- 母版取景：683x683，主体与赐福火的位置都由它定死 ----
-MASTER_REF = "assets/reference/home-standing.png"
-EMPTY_REF = "assets/reference/home-standing-empty.png"
-SEATED_REF = "assets/reference/home-seated.png"
-CROP = (221, 162, 904, 845)
+# ---- 母版取景：1024x1024 整张就是圆，取到圆的视觉边界 984 ----
+# v3 换了新母版：黄金树在顶、王城横贯中景、人马在左下、赐福在中下，
+# 上一版那张人马占掉半屏、树只露一角，怎么调都腾不出信息位。
+MASTER_REF = "assets/reference/home-v3-standing.png"
+ALT_REF = "assets/reference/home-v3-seated.png"     # 同源生成的"独坐、无马"
+CROP = (20, 20, 1004, 1004)
 
-# ---- 人马蒙版：母版里人和马的外轮廓，多盖一点没关系，少盖会漏出白马的边 ----
-MASK_HORSE = [(0, 183), (0, 52), (28, 50), (34, 44), (46, 40), (52, 31),
-              (58, 35), (68, 30), (78, 37), (86, 46), (87, 183)]
-MASK_MAN = [(78, 183), (78, 120), (79, 64), (86, 55), (96, 50), (107, 52),
-            (114, 57), (118, 65), (122, 78), (122, 110), (128, 127), (125, 183)]
-MASK_GROW = 4                               # 膨胀半径：宁可多盖，别露白边
-MASK_XMAX = 128                             # 右边界：再往右是赐福火光晕，不能动
-MASK_YMIN = 24                              # 上边界：马角顶端，再往上就是天空
-MASK_YMAX = 183                             # 下边界：地面线，以下的草坡必须留给母版
-
-# ---- 坐姿人：目标高度、脚底基线、水平中心 ----
-SEAT_H = 70
-SEAT_FLOOR = 183
-SEAT_CX = 104
+# ---- 人马替换区（源像素坐标）：两态只有这一块不同 ----
+# 不再抠图贴人。两张图同源生成，坐姿的位置、光照、草纹都对得上，
+# 直接整块替换比"抠出人再贴进去"少一道接缝；边缘高斯羽化，草纹不会硬接。
+SWAP_BOX = (15, 112, 99, 194)
+SWAP_FEATHER = 3
 
 # ---- 固件要用的两块矩形（源像素坐标）：起身扫描和马的粒子都只在这里动 ----
-MAN_BOX = (74, 44, 134, 184)
-HORSE_BOX = (0, 24, 92, 184)
+MAN_BOX = (15, 112, 99, 194)                # 人：站姿与坐姿位置的并集
+HORSE_BOX = (17, 114, 78, 165)              # 马：站姿有，坐姿是草地
 N_PTS = 150                                 # 马身上的粒子落点数量
 
-# ---- 赐福光柱：两态柱高不同（v2.3）----
-# 柱子是画进母版的死像素，整块抹掉会在天上留一块灰。只动"柱芯"：竖直连续 ≥BEAM_THICK 的
-# 暖色块，把它按**本行**的光晕色替换掉，混合量随高度推到 1——芯就淡进自己的光晕里，
-# 读起来是光散掉了，而不是被挖走。光环那种 1~3 px 的细线不满足"厚"，原样保留。
-# 底不能用二维扩散估：洞几乎占满柱带时，扩散会从带顶上方的冷色天空取色，填出来是灰的。
-BEAM_BAND = (138, 173, 18)                  # 柱带：x0, x1, 顶（源像素）；带内允许两态不同
-BEAM_FADE_OFF = (110, 84)                   # 坐火（高）：84 以上芯已散尽，110 以下原样
-BEAM_FADE_ON = (140, 118)                   # 未坐火（矮）：柱顶再低一截，两态差 34 px
-BEAM_EDGE = 6                               # 估本行光晕色时，柱带左右各取几列
-BEAM_LIGHT = (22, 80)                       # 判定"光"的下限：r-b > 22 且 r > 80
-BEAM_THICK = 6                              # 竖直连续这么多像素才算"厚"（柱芯/光锥）；细线是光环，留着
-
-
-def smoothstep(a, b, v):
-    t = (v - a) / float(b - a)
-    t = 0.0 if t < 0 else (1.0 if t > 1 else t)
-    return t * t * (3.0 - 2.0 * t)
-
-
-def beam_cut(img, y_full, y_top):
-    """把柱芯从 y_top 往上淡进本行光晕，y_full 以下原样。
-
-    只动"厚"的东西：竖直连续 BEAM_THICK 以上的暖色块（柱芯和光锥），
-    光环那种 1~3 px 的细线一律留着——光环是赐福的形态，抹掉就不像赐福了。
-    每行取柱带左右两侧的中位色当"这一行没有柱芯时该有的亮度"，横向铺平，
-    再乘 smoothstep：y_full 处不动、y_top 处芯完全让位给光晕。
-    """
-    out = img.copy()
-    p = out.load()
-    x0, x1, y0 = BEAM_BAND
-    h, w = y_full - y0, x1 - x0
-    if h <= 0 or w <= 0:
-        return out
-
-    def light(c):
-        return c[0] - c[2] > BEAM_LIGHT[0] and c[0] > BEAM_LIGHT[1]
-
-    core = [[0.0] * w for _ in range(h)]
-    for i in range(w):                                    # 逐列找竖直厚块
-        j = 0
-        while j < h:
-            if not light(p[x0 + i, y0 + j]):
-                j += 1
-                continue
-            k = j
-            while k < h and light(p[x0 + i, y0 + k]):
-                k += 1
-            if k - j >= BEAM_THICK:                       # 细线（光环、碎点）不动
-                for jj in range(j, k):
-                    core[jj][i] = 1.0
-            j = k
-    if not any(any(r) for r in core):
-        return out
-
-    # 每行的光晕底色：左右各取 BEAM_EDGE 列的中位数（中位数不会被残留的芯带跑），
-    # 再竖向 5 行平滑，免得逐行的颗粒在柱带里连成横纹。
-    rows = []
-    for j in range(h):
-        y = y0 + j
-        cols = [p[x, y] for x in range(x0, x0 + BEAM_EDGE)] + \
-               [p[x, y] for x in range(x1 - BEAM_EDGE, x1)]
-        rows.append([sorted(c[i] for c in cols)[len(cols) // 2] for i in range(3)])
-    halo = []
-    for j in range(h):
-        acc = [0.0, 0.0, 0.0]
-        n = 0
-        for k in range(max(0, j - 2), min(h, j + 3)):
-            for i in range(3):
-                acc[i] += rows[k][i]
-            n += 1
-        halo.append([acc[i] / n for i in range(3)])
-
-    # 芯的边缘半透明：3x3 均值，免得柱芯边界一步跳出硬边
-    soft = [[0.0] * w for _ in range(h)]
-    for j in range(h):
-        for i in range(w):
-            acc = 0.0
-            n = 0
-            for dj in (-1, 0, 1):
-                for di in (-1, 0, 1):
-                    jj, ii = j + dj, i + di
-                    if 0 <= jj < h and 0 <= ii < w:
-                        acc += core[jj][ii]
-                        n += 1
-            soft[j][i] = acc / n
-
-    for j in range(h):
-        y = y0 + j
-        a = 1.0 - smoothstep(y_top, y_full, y)           # y_full 不动，y_top 全让位
-        if a <= 0:
-            continue
-        f = halo[j]
-        for i in range(w):
-            m = soft[j][i] * a
-            if m <= 0.004:
-                continue
-            o = p[x0 + i, y]
-            p[x0 + i, y] = (clamp(o[0] + (f[0] - o[0]) * m),
-                            clamp(o[1] + (f[1] - o[1]) * m),
-                            clamp(o[2] + (f[2] - o[2]) * m))
-    return out
+# ---- 赐福光柱 ----
+# v3 母版里的光柱本来就只有火头上一小截，两态共用同一张，不存"柱高不同"的问题。
+# 之前那套"把上段填掉"的做法整条删了：填色必然留边界（混向天空出来是半透明柱子，
+# 混向光晕出来是暗带），看上去就是被擦掉的。两态差多少由固件的 hDimBless 压暗决定。
+BEAM_BAND = (109, 127, 176)                 # 柱带：两态都只有火头上一小截细光，差别微乎其微
+BEAM_Y1 = 210                               # 柱带底：落到火圈
+BEAM_FEATHER = 4                            # 柱带边缘羽化
 
 
 # 有序抖动而不是 Floyd-Steinberg：Bayer 的偏移只跟坐标有关，两张图同一坐标同色
@@ -160,10 +56,15 @@ def clamp(v):
 
 
 def grade(img):
-    """小屏在强光下容易糊成一团，抬一点亮度、对比与饱和度。"""
-    img = ImageEnhance.Brightness(img).enhance(1.12)
-    img = ImageEnhance.Contrast(img).enhance(1.06)
-    return ImageEnhance.Color(img).enhance(1.10)
+    """v3 母版本身偏亮偏紫，这里往回压：小屏要的是暗底 + 克制的金。
+
+    原来那套是"提亮 1.12、加饱和 1.10"，那是给旧母版（底子很暗）用的；
+    换到 v3 上会把云和雾一起推成一片粉紫，暗部全糊掉，金色也不再跳。
+    现在降亮度、加对比、压饱和——暗的地方真的暗下去，赐福才像唯一的光源。
+    """
+    img = ImageEnhance.Brightness(img).enhance(0.90)
+    img = ImageEnhance.Contrast(img).enhance(1.16)
+    return ImageEnhance.Color(img).enhance(0.92)
 
 
 def load233(path, crop=None):
@@ -177,77 +78,48 @@ def load233(path, crop=None):
     return grade(im.resize((S, S), Image.LANCZOS))
 
 
-def cut_seated(path):
-    """把坐姿人从平涂底色里抠出来，返回带 alpha 的 RGBA。"""
-    if not path.exists():
-        raise SystemExit(f"缺少参考图：{path}")
-    src = Image.open(path).convert("RGB")
-    w, h = src.size
-    # 底色取四角中位，生成图底色很均匀
-    corners = [src.getpixel(p) for p in ((4, 4), (w - 5, 4), (4, h - 5), (w - 5, h - 5))]
-    bg = tuple(sorted(c[i] for c in corners)[2] for i in range(3))
-    alpha = Image.new("L", (w, h), 0)
-    ap = alpha.load()
-    sp = src.load()
-    for y in range(h):
-        for x in range(w):
-            r, g, b = sp[x, y]
-            d = max(abs(r - bg[0]), abs(g - bg[1]), abs(b - bg[2]))
-            ap[x, y] = 0 if d <= 8 else (255 if d >= 30 else int((d - 8) * 255 / 22))
-    alpha = alpha.filter(ImageFilter.MedianFilter(3))
-    src.putalpha(alpha)
-    box = alpha.point(lambda v: 255 if v > 60 else 0).getbbox()
-    if not box:
-        raise SystemExit("坐姿人抠图失败：整张都被判成底色")
-    # 生成的图底部有一片涂抹阴影，占 bbox 高度的下 8%，连同水印一起切掉
-    trim = int((box[3] - box[1]) * 0.08)
-    box = (box[0], box[1], box[2], box[3] - trim)
-    return src.crop(box)
+def build_swap_mask():
+    """人马替换区的软蒙版：硬矩形内 255，边缘羽化 SWAP_FEATHER。
 
-
-def build_masks():
+    用矩形而不是描轮廓，是因为两张图同源生成，替换区里的草地、雾、石头的纹理
+    本来就是一套；矩形边界落在草坡上，羽化几像素就把纹理接回去了。
+    """
     mk = Image.new("L", (S, S), 0)
-    d = ImageDraw.Draw(mk)
-    d.polygon(MASK_HORSE, fill=255)
-    d.polygon(MASK_MAN, fill=255)
-    mk = mk.filter(ImageFilter.MaxFilter(MASK_GROW * 2 + 1))
-    mp = mk.load()
-    for y in range(S):
-        for x in range(S):
-            # 上下越出地面线和马角的地方要收回来：那些像素必须留给母版，
-            # 否则断开态那片草地会换成 AI 补的版本，站着时和周围接不上。
-            if x > MASK_XMAX or y < MASK_YMIN or y > MASK_YMAX:
-                mp[x, y] = 0
+    ImageDraw.Draw(mk).rectangle(
+        [SWAP_BOX[0], SWAP_BOX[1], SWAP_BOX[2] - 1, SWAP_BOX[3] - 1], fill=255)
+    if SWAP_FEATHER:
+        mk = mk.filter(ImageFilter.GaussianBlur(SWAP_FEATHER))
     return mk
 
 
-def build_off(master, empty, seated, mask):
-    """空场景＋坐姿人，蒙版外严格复制母版。"""
+def build_beam_mask():
+    """光柱带的软蒙版。两态在这里一有一无，是画面最大的差别，不能归到人马区里。"""
+    mk = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(mk).rectangle(
+        [BEAM_BAND[0], BEAM_BAND[2], BEAM_BAND[1] - 1, BEAM_Y1 - 1], fill=255)
+    if BEAM_FEATHER:
+        mk = mk.filter(ImageFilter.GaussianBlur(BEAM_FEATHER))
+    return mk
+
+
+def build_off(master, alt, swap_mask, beam_mask):
+    """未连接态：人马区 + 光柱带取另一张图，其余逐像素复制母版。
+
+    区外必须严格回填：固件靠"同坐标同索引"判断哪些像素属于背景、只重绘那一小块，
+    羽化溢出到区外的那几个像素若不收回，边界上就会有一圈两态对不上，
+    静止时看不出来，一切换就闪。
+    """
     off = master.copy()
-    off.paste(empty, (0, 0), mask)                       # 只取蒙版内的补全结果
-    mk = mask.load()
-    mp, op = master.load(), off.load()
-    for y in range(S):                                   # 蒙版外逐像素回填母版
-        for x in range(S):
-            if mk[x, y] < 128:
-                op[x, y] = mp[x, y]
-
-    h = SEAT_H
-    w = round(seated.width * h / seated.height)
-    sit = seated.resize((w, h), Image.LANCZOS)
-    al = sit.split()[3]
-    ap = al.load()
-    for y in range(h - 6, h):                            # 脚底淡出，融进草地
-        f = (h - 1 - y) / 6.0
-        for x in range(w):
-            ap[x, y] = int(ap[x, y] * f)
-    sit.putalpha(al)
-    off.paste(sit, (SEAT_CX - w // 2, SEAT_FLOOR - h), sit)
-
-    op = off.load()                                      # 人可能压出蒙版一点，再回填一次
+    off.paste(alt, (0, 0), swap_mask)
+    off.paste(alt, (0, 0), beam_mask)
+    op, mp = off.load(), master.load()
+    x0, y0, x1, y1 = SWAP_BOX
+    bx0, bx1, by0 = BEAM_BAND
     for y in range(S):
         for x in range(S):
-            if mk[x, y] < 128:
+            in_swap = x0 <= x < x1 and y0 <= y < y1
+            in_beam = bx0 <= x < bx1 and by0 <= y < BEAM_Y1
+            if not (in_swap or in_beam):
                 op[x, y] = mp[x, y]
     return off
 
@@ -317,8 +189,13 @@ def horse_points(off_img, on_img, n):
 
 
 def beam_xy(img, base_y):
-    """赐福火锚点：暖色高亮行数最多的那一列。"""
+    """赐福火锚点：画面下部暖色行数最多的那一列。
+
+    只在 y 0.62~0.92 之间找。v3 母版里黄金树的光也是暖色，从全图算会把树冠那几列
+    选出来；限定在下三分之一，取到的才是火。火本身只有十几行高，阈值跟着降到 8。
+    """
     px = img.load()
+    y0, y1 = int(S * 0.62), int(S * 0.92)
 
     def warm(x, y):
         r, g, b = px[x, y]
@@ -326,45 +203,44 @@ def beam_xy(img, base_y):
 
     best_x, best_rows = -1, 0
     for x in range(S):
-        rows = sum(1 for y in range(int(S * 0.3), S) if warm(x, y) > 400)
+        rows = sum(1 for y in range(y0, y1) if warm(x, y) > 400)
         if rows > best_rows or (rows == best_rows and rows and warm(x, base_y) > warm(best_x, base_y)):
             best_rows, best_x = rows, x
-    if best_rows < 30:
-        raise SystemExit(f"没找到赐福火：最亮的一列只有 {best_rows} 行高亮")
+    if best_rows < 5:
+        raise SystemExit(f"没找到赐福火：最暖的一列只有 {best_rows} 行达标")
     return best_x, base_y
 
 
 def main():
     root = Path(__file__).resolve().parent.parent
     master = load233(root / MASTER_REF, CROP)
-    empty = load233(root / EMPTY_REF, CROP)
-    seated = cut_seated(root / SEATED_REF)
-    mask = build_masks()
-    off = build_off(master, empty, seated, mask)
+    alt = load233(root / ALT_REF, CROP)
+    swap_mask = build_swap_mask()
+    beam_mask = build_beam_mask()
+    off = build_off(master, alt, swap_mask, beam_mask)
     on = master
-    beam_y1 = max(BEAM_FADE_OFF[0], BEAM_FADE_ON[0])      # 两态改动都落在 [y0, beam_y1)
-    off = beam_cut(off, *BEAM_FADE_OFF)                   # v2.3 坐火：柱子最高
-    on = beam_cut(on, *BEAM_FADE_ON)                      # v2.3 未坐火：再短一截
+    beam_y1 = BEAM_Y1
 
-    bx, by = beam_xy(on, 180)
+    bx, by = beam_xy(on, 204)
     pts = horse_points(off, on, N_PTS)
 
     pal, q_off, q_on = shared_quantize(off, on)
 
-    # 背景必须真的对得上：两只图在人马矩形和柱带之外，同位置索引必须相等
+    # 背景必须真的对得上：替换区之外，同坐标必须同索引。
+    # 放行的是 SWAP_BOX（素材真正替换的范围），不是 MAN/HORSE 两个动画矩形——
+    # 那两块只是固件重绘的粒度，比替换区小，用它们放行会把羽化边当成错误。
     a, b = q_off.load(), q_on.load()
     bad = []
     for y in range(S):
         for x in range(S):
             if a[x, y] != b[x, y]:
-                inside = (HORSE_BOX[0] <= x < HORSE_BOX[2] and HORSE_BOX[1] <= y < HORSE_BOX[3]) or \
-                         (MAN_BOX[0] <= x < MAN_BOX[2] and MAN_BOX[1] <= y < MAN_BOX[3]) or \
-                         (BEAM_BAND[0] <= x < BEAM_BAND[1] and BEAM_BAND[2] <= y < beam_y1)
+                inside = ((SWAP_BOX[0] <= x < SWAP_BOX[2] and SWAP_BOX[1] <= y < SWAP_BOX[3]) or
+                          (BEAM_BAND[0] <= x < BEAM_BAND[1] and BEAM_BAND[2] <= y < BEAM_Y1))
                 if not inside:
                     bad.append((x, y))
     if bad:
         head = " ".join(f"({x},{y})" for x, y in bad[:8])
-        raise SystemExit(f"背景没对齐：人马矩形与柱带之外有 {len(bad)} 个像素两态不同：{head}")
+        raise SystemExit(f"背景没对齐：替换区之外有 {len(bad)} 个像素两态不同：{head}")
 
 
     dest = root / "firmware/boards/175/MotoNav/resources/HomeSprites.h"
@@ -375,7 +251,7 @@ def main():
         "// 所以状态切换时只重绘人和马那一块，背景一动不动。",
         f"#define HOME_BEAM_X {bx}",
         f"#define HOME_BEAM_Y {by}",
-        "// 赐福光柱带：柱高按状态不同（坐火高、未坐火矮），切换时这一块也要按状态重绘",
+        "// 赐福柱带：两态一有一无（未连接有火柱、已连接只剩小火），切换时这一块跟着重绘",
         f"#define HOME_BEAM_X0 {BEAM_BAND[0]}",
         f"#define HOME_BEAM_X1 {BEAM_BAND[1]}",
         f"#define HOME_BEAM_Y0 {BEAM_BAND[2]}",

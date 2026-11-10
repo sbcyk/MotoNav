@@ -52,11 +52,21 @@ final class Weather: ObservableObject {
                 guard let self = self, self.generation == id else { return }
                 let p = marks?.first
                 let place = p?.subLocality ?? p?.locality ?? p?.administrativeArea ?? "当前位置"
-                Task { await self.fetch(loc, place: place, host: accountHost, key: accountKey, id: id) }
+                // 圆屏的点阵字体只有 ASCII，主页那条地点只能写英文；用一个新实例再解析一次，
+                // 免得和手上这次请求撞在一起（同一个 CLGeocoder 不允许并发）。
+                CLGeocoder().reverseGeocodeLocation(loc, preferredLocale: Locale(identifier: "en_US")) { [weak self] enMarks, _ in
+                    DispatchQueue.main.async {
+                        guard let self = self, self.generation == id else { return }
+                        let ep = enMarks?.first
+                        let name = ep?.locality ?? ep?.subAdministrativeArea ?? ep?.administrativeArea ?? ""
+                        let en = String(name.uppercased().prefix(18))
+                        Task { await self.fetch(loc, place: place, placeEn: en, host: accountHost, key: accountKey, id: id) }
+                    }
+                }
             }
         }
     }
-    @MainActor private func fetch(_ loc: CLLocation, place: String, host: String, key: String, id: Int) async {
+    @MainActor private func fetch(_ loc: CLLocation, place: String, placeEn: String, host: String, key: String, id: Int) async {
         let point = String(format: "%.2f/%.2f", locale: Locale(identifier: "en_US_POSIX"), loc.coordinate.latitude, loc.coordinate.longitude)
         let location = String(format: "%.2f%%2C%.2f", locale: Locale(identifier: "en_US_POSIX"), loc.coordinate.longitude, loc.coordinate.latitude)
         let paths = ["/weather/v1/current/\(point)?lang=zh&localTime=true", "/weather/v1/hourly/\(point)?hours=6&lang=zh&localTime=true", "/v7/minutely/5m?location=\(location)&lang=zh", "/airquality/v1/current/\(point)?lang=zh", "/weatheralert/v1/current/\(point)?lang=zh&localTime=true"]
@@ -75,10 +85,10 @@ final class Weather: ObservableObject {
         }
         guard generation == id else { return }
         busy = false
-        do { try build(results, place: place, notes: notes) }
+        do { try build(results, place: place, placeEn: placeEn, notes: notes) }
         catch { info = "天气数据无效"; retryAt = Date().addingTimeInterval(30); clearScreen() }
     }
-    private func build(_ r: [[String: Any]?], place: String, notes: [String]) throws {
+    private func build(_ r: [[String: Any]?], place: String, placeEn: String, notes: [String]) throws {
         func dict(_ v: Any?) -> [String: Any] { v as? [String: Any] ?? [:] }
         func number(_ v: Any?) -> Double? {
             let n = (v as? NSNumber)?.doubleValue ?? Double(v as? String ?? "")
@@ -119,8 +129,9 @@ final class Weather: ObservableObject {
         // Stable Java-compatible hash: the firmware uses it to distinguish warnings.
         var hash: Int32 = 0
         for c in title.utf16 { hash = hash &* 31 &+ Int32(c) }
-        messages = ["#WX,\(aqi),\(confirmed ? alerts.count : -1),\(top.map(level) ?? 0),\(bars.count),\(hash & 0x7fffffff)" + bars.map { ",\($0)" }.joined(),
+        messages = (["#WX,\(aqi),\(confirmed ? alerts.count : -1),\(top.map(level) ?? 0),\(bars.count),\(hash & 0x7fffffff)" + bars.map { ",\($0)" }.joined(),
                     "#W,\(Self.icon(text, night: night)),\(Int(temp.rounded())),\(f.string(from: Date())),H,\(hours.count)" + hours.map { ",\($0)" }.joined()]
+            + (placeEn.isEmpty ? [String]() : ["#WL,\(placeEn)"]))   // 主页信息带用；圆屏点阵只有 ASCII，所以发英文名
         images = [(3, "\(place) · \(text)"), (4, windText), (7, rain), (8, air), (9, title), (10, String(body.prefix(60))), (11, String(advice.prefix(60)))].map {
             ($0.0, TextImage.render($0.1, maxW: 330, size: 24, minSize: 18))
         }

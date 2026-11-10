@@ -4,6 +4,7 @@
 // 图标编号（手机按高德的天气文字归类）：0 晴 1 多云 2 阴 3 雨 4 大雨 5 雷雨 6 雪 7 雾霾 8 雨夹雪 9 沙尘 10 夜晴 11 夜多云
 bool wxHave = false;
 int wxIcon = 0, wxTemp = 0;
+char wxPlace[20] = "";                 // 地点名，来自 #WL 命令；没收到就是空串
 String wxTime = "";
 int wxN = 0;
 bool wxHourly = false;                 // v5.6 下面一排是逐小时（H）还是按天（D）

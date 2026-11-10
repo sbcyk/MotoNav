@@ -1,17 +1,19 @@
 #pragma once
-// 首页：黄昏赐福。两态共用一张背景，只有人和马那一块不同：
+// 首页：黄昏赐福。两态共用一张背景，只有「人马矩形」和「赐福柱带」两块不同：
 // 未连接是褪色者独坐赐福旁，已连接是托雷特由蓝色粒子聚合现身、褪色者起身牵缰。
 //
-// v2.2 起不再用“两张整图抖动溶解”。素材侧把两态的**人马矩形之外**做成逐像素相同、
+// v2.2 起不再用“两张整图抖动溶解”。素材侧把两态的**人马矩形与柱带之外**做成逐像素相同、
 // 共用同一张调色板（scripts/home_sprites.py 会校验，失配就报错），所以：
-//   · 状态切换只重绘人和马那一小块，天空、峡谷、王城、黄金树、赐福火一动不动；
+//   · 状态切换只重绘人马块和柱带，天空、峡谷、王城、黄金树、火圈一动不动；
 //   · 人靠纵向扫描从脚往上“立”起来，马靠蓝色粒子从地面聚拢成形；
 //   · 赐福光随姿态变：坐火（坐着）亮而盛，未坐火（站着）暗一档、火苗小一号、粒子稀少。
 // v2.3 赐福分两档，读的是《黑暗之魂/艾尔登法环》那套规则：没坐下休息时赐福本身也发金光，
 // 只是弱——所以站着不是"灭掉"，是火苗小一圈、亮度档 16→9、闪烁粒子 10→5、光尘 20→10。
-// 赐福光柱的高度也按状态分（坐火高、未坐火矮）：柱芯是画进母版的死像素，出图时只把
-// 竖直连续的厚光块按本行两侧的光晕色淡掉（坐火散尽于源 y=84、未坐火 118），1~3 px 的
-// 光环细线原样保留；两态在 HOME_BEAM_* 这一带不同，切换时这一带也要重绘（见 hScene 的 inBeam 分支）。
+// v2.4 换母版：两态改成同一张图生成的两张（站姿牵马 / 独坐无马），只在「人马矩形」和
+// 「赐福柱带」两块不同。赐福强弱不再靠"柱高分档"——那要在母版里把上段填掉，填出来永远是
+// 一块灰；改成 hDimBless 椭圆压暗：未交互（已连接、已起身）时把火周围压一档，火是画面唯一
+// 光源，一压就弱，边缘渐变看不出边界。柱带两态也不同（一有一无），切换时这一带跟着重绘
+// （见 hScene 的 inBeam 分支）。
 // 绘制仍分整帧（进度推进 / 进页面 / 浮层）和局部（静置的光尘与火光）两种。
 // 推屏始终整屏一次；局部只擦上一帧特效那一小块再重画，静置时每帧只有几百个像素级操作。
 // 画面走同步推屏（单缓冲），局部更新才不会画到屏幕没在显示的那块缓冲上。
@@ -40,7 +42,9 @@ HomeClock homeClock;
 #define H_DUST_TOP_STAND 68    // 站着时行程更短：赐福没被交互
 #define H_SPK_N      10        // 赐福闪烁粒子（未坐火只亮前一半）
 #define H_FX_SPAN    44        // 特效包围盒半宽（粒子最远 35，留余量）
-#define H_FX_TOP     128       // 特效最高处（相对火心）
+#define H_DIM_RX     78        // 赐福压暗椭圆半宽（v2.4）：比 H_FX_SPAN 大，hBox 必须跟着它走
+#define H_DIM_RY     50        // 赐福压暗椭圆半高
+#define H_FX_TOP     142       // 特效最高处（相对火心）：光柱画在母版里，这里只管光尘和火星
 #define H_MAN_UNTIL  0.55f     // 进度到 55% 时人已经站直，剩下的都留给马
 #define H_HRS_FROM   0.25f     // 马从 25% 开始聚合，到 100% 成完
 #define H_MAN_BAND   13        // 起身扫描带的半宽（源像素）：带内按噪声逐个翻，不是一刀切
@@ -218,7 +222,7 @@ static void hScene() {
         } else if (inHrs) {
           idx = (hHorseOrder(sx, sy) <= hrsK) ? b : a; // 马：按各自的显形时刻一个个翻
         } else if (inBeam) {
-          // 柱高两态不同（坐火高、未坐火矮）：按噪声阈值随进度逐个翻，和起身一样不是一刀切
+          // 柱带两态一有一无：按噪声阈值随进度逐个翻，和起身一样不是一刀切（v2.4）
           idx = ((int)(hNoise(sx, sy) & 255) < (int)(hT * 256.0f)) ? b : a;
         } else {
           idx = b;
@@ -299,6 +303,33 @@ static void hBlessSparks(unsigned long now, float boost, float manT) {
   }
 }
 
+// 未交互时把赐福压暗一档。火是画面唯一的光源，把周围亮度压下去，它自己就"弱"了；
+// 中心压得最多、往外按椭圆距离淡出，所以看不出从哪儿开始变暗。
+// 这件事加色做不到：母版的火已经接近饱和，加多加少都是白。
+static void hDimBless(int cx, int cy, int rx, int ry, int k) {   // v2.4 新增
+  if (k <= 0) return;
+  uint16_t *fb = gfx->getFramebuffer();
+  if (!fb) return;
+  const int32_t lim = (int32_t)rx * rx * ry * ry;
+  for (int y = cy - ry; y <= cy + ry; y++) {
+    if (y < 0 || y >= LCD_HEIGHT) continue;
+    const int32_t dy2 = (int32_t)(y - cy) * (y - cy);
+    uint16_t *row = fb + (size_t)y * LCD_WIDTH;
+    for (int x = cx - rx; x <= cx + rx; x++) {
+      if (x < 0 || x >= LCD_WIDTH) continue;
+      const int32_t dx2 = (int32_t)(x - cx) * (x - cx);
+      const int32_t d2 = (dx2 * ry * ry + dy2 * rx * rx) * 16 / lim;   // 0 中心 ~ 16 边缘
+      if (d2 >= 16) continue;
+      const int keep = 16 - (k * (16 - d2) + 8) / 16;
+      if (keep >= 16) continue;
+      const uint16_t p = row[x];
+      row[x] = (uint16_t)(((((p >> 11) & 31) * keep >> 4) << 11) |
+                          ((((p >> 5) & 63) * keep >> 4) << 5) |
+                          (((p & 31) * keep >> 4)));
+    }
+  }
+}
+
 // 光尘 + 赐福火光：只动这两层，画完把包围盒交给局部重绘用。
 // manT = 0 坐着（坐火：更亮、更高、火苗更大），1 站着（未坐火：暗一档、矮一截、火苗小一号）。
 static void hEffects(unsigned long now, float boost, float manT) {
@@ -306,8 +337,11 @@ static void hEffects(unsigned long now, float boost, float manT) {
   const int lit = (int)(16.0f * (1.0f - 0.44f * manT) + 0.5f);     // 亮度档位 16 → 9（v2.3 原来只到 12）
   const int lift = (int)(6.0f * (1.0f - 0.55f * manT) + 0.5f);     // 光心离地高度 6 → 2.7
   const int dustTop = (int)(H_DUST_TOP_SIT + (H_DUST_TOP_STAND - H_DUST_TOP_SIT) * manT);
-  const int fw = (int)(34.0f * (1.0f - 0.41f * manT) + 0.5f);      // 光晕 34×12 → 20×7（v2.3）
+  const int fw = (int)(23.0f * (1.0f - 0.40f * manT) + 0.5f);      // 光晕收在火圈附近
   const int fh = (int)(12.0f * (1.0f - 0.42f * manT) + 0.5f);
+  // 先压暗再叠光：未交互（站着）时把赐福那一圈压下去，火就明显弱了。
+  // 只靠加色区分不出来——母版的火已经接近饱和，加多加少都是白。
+  hDimBless(bx, by - 4, H_DIM_RX, H_DIM_RY, (int)(7.0f * manT + 0.5f));
   // 火光呼吸
   const float breath = 0.75f + 0.25f * sinf(now * 0.0011f);
   const int k = (int)((1.5f + 1.5f * breath) * boost * lit / 16.0f + 0.5f);
@@ -331,10 +365,10 @@ static void hEffects(unsigned long now, float boost, float manT) {
     hAddEllipse(x, y, r, r, (i % 4) ? H_DUST : H_HOLY, dk);
   }
   hBlessSparks(now, boost, manT);
-  hBox[0] = bx - H_FX_SPAN - 4;
+  hBox[0] = bx - H_DIM_RX - 4;         // 取两者更大的那个，否则局部擦除会漏掉压暗边
   hBox[1] = by - H_FX_TOP - 4;
-  hBox[2] = bx + H_FX_SPAN + 4;
-  hBox[3] = by + 12;
+  hBox[2] = bx + H_DIM_RX + 4;
+  hBox[3] = by + 52;                       // 压暗区下沿也要擦到
 }
 
 // ================= 动画状态 =================
@@ -350,6 +384,7 @@ static bool   hFullNext = true;             // 下一帧要整帧重画
 static int    hSt = -1;                     // 上一次状态，用来判断要不要闪一下
 static unsigned long hFrameAt = 0;
 static bool   hSnapOnce = false;            // 滑动合成要静态落点：这一次直接落地，不播过渡
+static int64_t hBandMinute = -2;            // 信息带上一次画过的分钟：变了才重排
 
 #include "../../FixedPageLayout.h"
 // 固定位置：音乐在左、导航居中、天气在右；降雨在天气上方、预警在下方。
@@ -391,11 +426,12 @@ static void hDrawInfo() {
   printCentered("TAP TO CLOSE", CX, 350, 1, 0x4208);
 }
 
-// 整帧：画面 → 马粒子 → 赐福火光与光尘 → 浮层
+// 整帧：画面 → 马粒子 → 赐福火光与光尘 → 信息带 → 浮层
 static void hDrawFull(unsigned long now) {
   hScene();
   hHorseSparks(hHrsProgress(hT));          // 两端它自己会跳过，这里不再判一次
   hEffects(now, hBoost, hManProgress(hT));
+  drawHomeBand(now);                       // 连上才画，浮层展开时它自己让位
   if (hInfoOn) hDrawInfo();
 }
 
@@ -505,6 +541,12 @@ void animateCat() {
       hFullNext = true;
       catForce = true;
     }
+  }
+  // 信息带上的时间得跟着走：静置时只擦重赐福那一小块，时间不会自己更新，
+  // 所以分钟一变就整帧重来一次。一分钟一次，代价可以忽略。
+  if (hT >= 0.999f) {
+    const int64_t m = homeClock.minuteKey(now);
+    if (m != hBandMinute) { hBandMinute = m; hFullNext = true; catForce = true; }
   }
   const bool full = hFullNext || hDir != 0;
   const int gap = hDir != 0 ? 33 : (hBoost > 1.0f ? 60 : HOME_FRAME_MS);

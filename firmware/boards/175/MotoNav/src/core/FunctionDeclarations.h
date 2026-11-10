@@ -75,6 +75,7 @@ void drawHomeClock();
 void homeToggleInfo();
 void drawPageDots();
 void drawWaiting(int st);
+void drawHomeBand(unsigned long now);
 void drawPairScreen();
 static float frand(float a, float b);
 void startArriveFx(bool wp);

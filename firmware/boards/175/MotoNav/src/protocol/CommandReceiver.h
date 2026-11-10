@@ -328,7 +328,16 @@ void handleText(const String &m) {
   }
   if (m.startsWith("#n,")) { nightOn = m.substring(3).toInt() != 0; navDirty = true; return; }   // v3.0 夜间配色
   if (m == "#o") { ghostN = 0; navDirty = true; return; }   // v4.4 不显示原路线
-  if (m == "#WXRESET") { wxHave = false; wxExtra = false; wxDirty = true; return; }
+  if (m == "#WXRESET") { wxHave = false; wxExtra = false; wxPlace[0] = 0; wxDirty = true; return; }   // v2.4 地名一起清
+  if (m.startsWith("#WL,")) {                            // v2.4 主页信息带的地点
+    m.substring(4).toCharArray(wxPlace, sizeof(wxPlace));
+    // 只在首页真的在显示时才立刻重画。在导航页或天气页硬把 frameIsMap 置 false，
+    // 会把地图的推屏模式打乱；那些页面切回首页时自然会走 drawWaiting 重画。
+    if (onWaitScreen && page == 0 && !inNav) {
+      catForce = true; hFullNext = true; needFlush = true; frameIsMap = false;
+    }
+    return;
+  }
   if (m.startsWith("#WX,")) { parseWeatherExtra(m); return; }
   if (m.startsWith("#W,")) { parseWeather(m); return; }   // v5.3 天气
   if (m.startsWith("#i,")) {                             // v5.1 来电："#i,1,号码" / "#i,0"

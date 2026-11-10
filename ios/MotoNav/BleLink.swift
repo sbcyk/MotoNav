@@ -309,12 +309,13 @@ final class BleLink: NSObject, ObservableObject {
     /// Drop cached weather before resetting the screen; reconnect must not replay stale data.
     func clearWeather() {
         let slots = [3, 4, 7, 8, 9, 10, 11]
-        for key in ["#W", "#WX"] { lastState.removeValue(forKey: key) }
-        stateOrder.removeAll { $0 == "#W" || $0 == "#WX" }
+        let keys = ["#W", "#WX", "#WL"]
+        for key in keys { lastState.removeValue(forKey: key) }
+        stateOrder.removeAll { keys.contains($0) }
         for slot in slots { lastImg.removeValue(forKey: slot) }
         queue.removeAll { out in
             guard let key = out.key else { return false }
-            return key == "#W" || key == "#WX" || slots.contains { key.hasPrefix("B\($0):") }
+            return keys.contains(key) || slots.contains { key.hasPrefix("B\($0):") }
         }
         for slot in slots { enqueueImage(slot: slot, w: 0, h: 0, data: Data()) }
         sendOnce("#WXRESET")

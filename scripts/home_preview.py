@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """离线预览圆屏主页（需 Pillow，仅 PC 用，不参与固件编译）。
 
-几何、配色、绘制顺序必须与 src/pages/HomePage.h 保持一致；
-画面素材从 resources/HomeSprites.h 里读，和固件同一份数据。
+画面从 resources/HomeSprites.h 读，和固件同一份数据；信息层的版式常量（时间 / 日期 /
+行位置、环半径、星芒半高）直接从 src/pages/HomeBand.h 的 #define 解析，配色也对齐它——
+常量只保留一份，固件改了预览不会静默跑偏。绘制顺序跟 HomePage.h 的 hDrawFull 一致。
 输出到 scripts/preview/*.png
 
-v2.2 起切换不再是整屏溶解：t=0 是独坐、t=1 是起身牵马，中间只有人和马两块在变，
+t=0 是独坐（未连接，人在赐福里交互）、t=1 是起身牵马（已连接），中间只有人和马在变，
 按 t 出几帧就能看出背景是不是真的没动——这正是要验的东西。
 """
 import math
 import re
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
 
 W = H = 466                   # = pin_config.h 的 LCD_WIDTH / LCD_HEIGHT
 CX = 233
@@ -252,18 +253,41 @@ def bless_sparks(s, now, boost, man_t):
         s.add_ellipse(x, y, r, r, c, k)
 
 
+def dim_bless(s, cx, cy, rx, ry, k):
+    """未交互时把赐福压暗一档：火是画面唯一光源，压周围的亮度，它自然就弱了。
+
+    不能靠加色区分——母版的火本来就快到饱和，加多加少都是白。
+    中心压得最多，往外按椭圆距离淡出，边界看不出来。
+    """
+    if k <= 0:
+        return
+    px = s.img.load()
+    lim = float(rx * rx * ry * ry)
+    for y in range(max(0, cy - ry), min(H, cy + ry + 1)):
+        dy2 = (y - cy) ** 2
+        for x in range(max(0, cx - rx), min(W, cx + rx + 1)):
+            d2 = ((x - cx) ** 2 * ry * ry + dy2 * rx * rx) / lim
+            if d2 >= 1.0:
+                continue
+            keep = 1.0 - (k / 16.0) * (1.0 - d2)
+            r, g, b = px[x, y]
+            px[x, y] = (int(r * keep), int(g * keep), int(b * keep))
+
+
 def ground(s, now, boost, man_t):
     """火光 + 光尘 + 闪烁粒子：亮度、火苗大小、光尘行程、粒子多少都随姿态变。"""
     bx, by = BEAM[0] * 2, BEAM[1] * 2
+    dim_bless(s, bx, by - 4, 78, 50, int(7 * man_t + 0.5))
     lit = int(16.0 * (1.0 - 0.44 * man_t) + 0.5)
     lift = int(6.0 * (1.0 - 0.55 * man_t) + 0.5)
     dust_top = int(DUST_TOP_SIT + (DUST_TOP_STAND - DUST_TOP_SIT) * man_t)
-    fw = int(34.0 * (1.0 - 0.41 * man_t) + 0.5)
+    fw = int(23.0 * (1.0 - 0.40 * man_t) + 0.5)
     fh = int(12.0 * (1.0 - 0.42 * man_t) + 0.5)
     breath = 0.75 + 0.25 * math.sin(now * 0.0011)
     k = int((1.5 + 1.5 * breath) * boost * lit / 16.0 + 0.5)
     s.add_ellipse(bx, by - lift, fw, fh, H_AMBER, k)
     s.add_ellipse(bx, by - lift - 6, (fw * 15 + 17) // 34, (fh * 7 + 6) // 12, H_HOLY, k)
+    # 光柱现在画在母版里（两张图本来就一有一无），不再靠加色叠一根上去
     if boost > 1.05:
         r = 20 + int(12 * (boost - 1.0) / 0.6)
         s.add_ellipse(bx, by, r, r // 4, H_SPECTRAL_HI, int((boost - 1.0) * 10))
@@ -288,6 +312,116 @@ def centered(s, text, y, size, color):
     s.d.text((CX - (box[2] - box[0]) // 2, y), text, font=font, fill=rgb565(color))
 
 
+# ---- 常驻信息带：常量从 HomeBand.h 读，和固件同一份 ----
+_BAND = (_ROOT / "firmware/boards/175/MotoNav/src/pages/HomeBand.h").read_text(encoding="utf-8")
+
+
+def _band(name, default):
+    m = re.search(rf"#define\s+{name}\s+(-?\d+)", _BAND)
+    return int(m.group(1)) if m else default
+
+
+def _565(r, g, b):
+    return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
+
+
+GOLD_TXT = _565(244, 222, 170)      # 时间：暖白金
+GOLD_SUB = _565(214, 188, 138)      # 日期 / 地点：暗金
+GOLD_RING = _565(206, 166, 74)      # 环
+INK = _565(20, 14, 6)               # 描边：深褐黑，不是纯黑
+
+
+def soft_dim(s, box, strength=0.40, feather=30):
+    """柔和压暗：椭圆遮罩 + 高斯模糊，没有矩形边界。
+
+    比描边干净得多——字浮在自然暗下去的一块上，而不是每个字都镶一圈黑。
+    """
+    w, h = box[2] - box[0], box[3] - box[1]
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).ellipse([0, 0, w - 1, h - 1], fill=255)
+    mask = mask.filter(ImageFilter.GaussianBlur(feather))
+    region = s.img.crop(box)
+    dark = ImageEnhance.Brightness(region).enhance(1.0 - strength)
+    s.img.paste(dark, box, mask)
+
+
+def band_text(s, text, y, size, color, x=None, outline=0):
+    """文字。默认不描边——底子已经柔和压暗过，再镶黑边就脏了。"""
+    font = ImageFont.truetype(FONT, size * 8, index=0)
+    box = s.d.textbbox((0, 0), text, font=font)
+    tw = box[2] - box[0]
+    left = CX - tw // 2 if x is None else x
+    if outline:
+        for dy in (-outline, 0, outline):
+            for dx in (-outline, 0, outline):
+                if dx == 0 and dy == 0:
+                    continue
+                s.d.text((left + dx, y + dy), text, font=font, fill=rgb565(INK))
+    s.d.text((left, y), text, font=font, fill=rgb565(color))
+    return tw
+
+
+HB_TIME_Y = _band("HB_TIME_Y", 52)
+HB_DATE_Y = _band("HB_DATE_Y", 128)
+HB_ROW_Y = _band("HB_ROW_Y", 156)
+HB_RING_R = _band("HB_RING_R", 224)
+HB_SPARK_R = _band("HB_SPARK_R", 7)
+
+
+def draw_ring(s):
+    """金色细环 + 四向星芒。环贴着圆边走，星芒落在 12/3/6/9。"""
+    r = HB_RING_R
+    s.d.ellipse([CX - r, CX - r, CX + r, CX + r], outline=rgb565(GOLD_RING), width=2)
+    for ang in (0, 90, 180, 270):
+        a = math.radians(ang)
+        x = CX + math.cos(a) * r
+        y = CX + math.sin(a) * r
+        s.d.polygon([(x, y - HB_SPARK_R), (x + 5, y), (x, y + HB_SPARK_R), (x - 5, y)], fill=rgb565(GOLD_TXT))
+
+
+def wx_cloud(s, cx, cy, sz, color):
+    s.disc(cx - sz * 0.5, cy + sz * 0.08, sz * 0.42, color)
+    s.disc(cx + sz * 0.05, cy - sz * 0.2, sz * 0.58, color)
+    s.disc(cx + sz * 0.55, cy + sz * 0.12, sz * 0.38, color)
+    s.d.rounded_rectangle([cx - sz * 0.92, cy + sz * 0.02, cx + sz * 0.92, cy + sz * 0.52],
+                          int(sz * 0.25), fill=rgb565(color))
+
+
+def info_band(s, time="21:36", date="2026-11-03", temp=16, loc="LIMGRAVE"):
+    """融合版信息层：环 + 星芒 + 时间 + 日期 + 地点 + 天气。
+
+    排版照参考图：时间最大居中，日期紧跟，地点靠左下、天气靠右下，中间让给王城。
+    字全用暖金色系（和画面唯一的光源同色）；可读性靠两块柔和压暗的椭圆，
+    不用描边，也没有矩形边界——暗是慢慢淡下去的，看不出来从哪开始。
+    """
+    draw_ring(s)
+    soft_dim(s, (34, 24, 432, 150), 0.40, 36)
+    soft_dim(s, (66, 146, 400, 184), 0.30, 24)
+
+    band_text(s, time, HB_TIME_Y, 8, GOLD_TXT)
+    band_text(s, date + "   TUE", HB_DATE_Y, 2, GOLD_SUB)
+
+    y = HB_ROW_Y
+    lx = CX - 132
+    s.d.polygon([(lx + 5, y + 2), (lx + 9, y + 8), (lx + 5, y + 14), (lx + 1, y + 8)],
+                outline=rgb565(GOLD_SUB))
+    band_text(s, loc, y, 2, GOLD_SUB, x=lx + 14)
+
+    wx_cloud(s, CX + 74, y + 8, 12, 0xDEFB)
+    font = ImageFont.truetype(FONT, 16, index=0)
+    label = str(temp)
+    box = s.d.textbbox((0, 0), label, font=font)
+    tw = box[2] - box[0]
+    tx = CX + 128 - tw - 6
+    s.d.text((tx, y), label, font=font, fill=rgb565(GOLD_TXT))
+    ox = CX + 128 - 4
+    s.d.ellipse([ox, y + 4, ox + 4, y + 8], outline=rgb565(GOLD_TXT))
+
+
+_FW = (_ROOT / "firmware/boards/175/MotoNav/src/core/FirmwareConfig.h").read_text(encoding="utf-8")
+FW_VER = re.search(r'#define\s+FW_VERSION\s+"([^"]+)"', _FW).group(1)   # 版本串只留一份，别在预览里再抄一遍
+
+
 def info_card(s):
     s.d.rounded_rectangle([CX - 152, 130, CX - 152 + 303, 130 + 237], 18, fill=rgb565(H_CARD))
     s.d.rounded_rectangle([CX - 152, 130, CX - 152 + 303, 130 + 237], 18, outline=rgb565(H_CARD_ED))
@@ -297,7 +431,7 @@ def info_card(s):
     centered(s, "LINKED", 266, 2, C_GREEN)
     centered(s, "MotoNav-3F2A", 290, 2, C_GREY)
     centered(s, "BAT 87%", 312, 2, C_GREY)
-    centered(s, "v2.3.0  40MHz", 336, 1, C_GREY)
+    centered(s, f"{FW_VER}  40MHz", 336, 1, C_GREY)
     centered(s, "TAP TO CLOSE", 350, 1, 0x4208)
 
 
@@ -309,13 +443,15 @@ def crop(s):
     return out
 
 
-def render(t, now=1428, boost=1.0, info=False):
+def render(t, now=1428, boost=1.0, info=False, band=False):
     s = Scene()
     s.load(t)
     hrs_t = hrs_progress(t)
     if 0.02 < hrs_t < 0.97:
         sparks(s, hrs_t)
     ground(s, now, boost, man_progress(t))
+    if band:
+        info_band(s)
     if info:
         info_card(s)
     return crop(s)
@@ -324,10 +460,11 @@ def render(t, now=1428, boost=1.0, info=False):
 if __name__ == "__main__":
     dest = Path(__file__).resolve().parent / "preview"
     dest.mkdir(exist_ok=True)
-    shots = [("nolink", 0.0, 1.0, False), ("ready", 1.0, 1.0, False),
-             ("info", 1.0, 1.0, True), ("summon", 1.0, 1.45, False)]
-    for name, t, boost, info in shots:
-        render(t, boost=boost, info=info).save(dest / f"home_{name}.png")
+    shots = [("nolink", 0.0, 1.0, False, False), ("ready", 1.0, 1.0, False, False),
+             ("band", 1.0, 1.0, False, True), ("band_int", 0.0, 1.0, False, True),
+             ("info", 1.0, 1.0, True, False), ("summon", 1.0, 1.45, False, False)]
+    for name, t, boost, info, band in shots:
+        render(t, boost=boost, info=info, band=band).save(dest / f"home_{name}.png")
         print(dest / f"home_{name}.png")
     for t in (0.2, 0.35, 0.5, 0.65, 0.8):
         render(t, now=1428, boost=1.3).save(dest / f"home_t{int(t*100):02d}.png")
