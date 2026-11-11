@@ -618,17 +618,12 @@ sbcyk/MotoNav
 ```bash
 git clone https://github.com/sbcyk/MotoNav.git
 cd MotoNav
-git remote add upstream https://github.com/zyn950929/MotoNav.git
-git fetch upstream
 
-# 建立自己的工作分支，永远不要直接改 main
+# 建立自己的工作分支，不要直接改 main
 git checkout -b feat/my-change
-
-# 同步上游
-git checkout main && git merge --ff-only upstream/main && git push origin main
 ```
 
-这样你的改动和上游更新可以一直用 `rebase` 保持线性，出问题也能干净回退。
+改完合回 `main`（`--ff-only` 或 squash），历史保持线性，出问题也能干净回退。
 
 ---
 
@@ -911,11 +906,7 @@ git checkout main && git merge --ff-only upstream/main && git push origin main
 
 ### C. 参考链接
 
-- 上游仓库：https://github.com/zyn950929/MotoNav
 - 你的分支：https://github.com/sbcyk/MotoNav
-- 最新发布页：https://github.com/zyn950929/MotoNav/releases/tag/motonav-2026.11.01-r2
-- 文档目录：https://github.com/zyn950929/MotoNav/blob/main/docs/README.md
-- 蓝牙/媒体协议：https://github.com/zyn950929/MotoNav/blob/main/docs/BLE-HID.md
 - iOS UI 来源：https://github.com/coolcoolmanman-design/MotoNav
 - esptool（烧录工具）：https://github.com/espressif/esptool
 

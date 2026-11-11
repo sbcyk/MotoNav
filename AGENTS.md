@@ -51,7 +51,7 @@
 
 验证方式：跑一次 `python package_flasher.py --tools-dir <含 esptool.exe 的目录>`，它内部会校验版本一致性、镜像格式、清单哈希，全过才算干净。产物在 `output/firmware/<版本>/`，用完可以删。
 
-`firmware/MAC_PACKAGE.json` 记的是上游 11-01 发布的 macOS 一键包（tag、文件名、sha256），只有 `release-firmware.yml` 的 mac 冒烟任务会读它；`docs/archive/RELEASE-*.md` 是当时的发布存档，里面仍是上游口径的版本号和下载页。这些是跟原文对照的记录，不要顺手改成当前版本号。
+`docs/archive/RELEASE-*.md` 是当时的发布存档，里面仍是上游口径的版本号和下载页，是跟原文对照的记录，不要顺手改成当前版本号。
 
 ### tag 规范
 
@@ -355,24 +355,15 @@ Windows 编不了 iOS，走 GitHub Actions。Actions 已启用，工作流在 `.
 
 开发一批内容、自己确认没问题了，再主动出包装机测试。**任何 push 都不应该自动触发构建。**
 
-仓库里有 4 个工作流，配置目标是「1 个启用 + 3 个禁用」：
+仓库里有 3 个工作流，全部只有 `workflow_dispatch`，push 不会触发：
 
-| 工作流 | 触发条件 | 状态 |
-|---|---|---|
-| `ios-quick.yml` | 只有 `workflow_dispatch` | **启用**，手动点 |
-| `release-ios.yml` | push main 且改 `ios/**` 或 `firmware/boards/175/MotoNav/**` | **已禁用** |
-| `release-firmware.yml` | push main 且改 `firmware/**` | **已禁用** |
-| `android-verify.yml` | push main 且改 `android/**` | **已禁用** |
+| 工作流 | 内容 |
+|---|---|
+| `ios-quick.yml` | 精简出包，8~15 分钟出一个 unsigned IPA |
+| `release-ios.yml` | 完整回归：装 Pods、编 Release、跑 webmotor / 息屏底图 / 偏航重算 / 到达 / 时钟协议 / 音乐 AMS / 分包传输等测试，最后出 IPA 与源码包（约 40 分钟） |
+| `release-firmware.yml` | 固件单元测试：`firmware/tests/*Test.cpp`、idle-power-off、raster-work（带 ASan/UBSan），并检查两个打包脚本能起 |
 
-`firmware/**` 这个匹配很宽，改一行固件就会命中；不禁用的话每推一次固件都要跑一轮 40 分钟的 iOS 构建加一轮打包。
-
-那三个是上游的文件，**不要改它们的 yml**（会和上游同步冲突），直接在网页上禁用：
-`Actions` 页面 → 左侧点进该工作流 → 右上角 `...` → `Disable workflow`。
-
-禁用状态记在 GitHub 上，不在代码里，所以：
-
-- 想临时跑一次官方 iOS 流程：先 `Enable workflow`，跑完记得再禁用
-- **每次同步上游之后检查一遍 Actions 左侧列表**，上游新增的 workflow 进来后默认是启用的，会破坏"全手动"
+三个都在 GitHub 上是**禁用**状态，要跑先 `Actions` 页面 → 左侧点进工作流 → 右上角 `...` → `Enable workflow`，跑完记得再禁用。之前的自动触发（`push` 改 `ios/**` 或 `firmware/**` 就跑 40 分钟）已经去掉，所以现在启用也不会被 push 打扰。
 
 iOS 出包：`Run workflow` → 选分支（build 号由 run 号自动生成，不再手填说明）→ 跑完在 run 页面下载 artifact。
 固件出包：本地 `python firmware/package_flasher.py --tools-dir <含 esptool.exe 的目录>`，产物在 `output/firmware/<版本>/`。只给自己装机的话直接用 esptool 烧 app 分区即可，不必打包。

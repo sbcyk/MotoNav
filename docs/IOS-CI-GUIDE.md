@@ -9,10 +9,10 @@
 | 项 | 值 |
 |---|---|
 | 你的 fork | `github.com/sbcyk/MotoNav`，public，main 是自己的开发主线 |
-| fork 的 parent | `CharlesXu/MotoNav`（工作流里仍引用旧名 `zyn950929/MotoNav`，属正常） |
+| fork 的 parent | `CharlesXu/MotoNav`；本仓库只保留来源声明，不同步上游 |
 | iOS 源码 | `ios/` 129 个文件，`MotoNav.xcworkspace` + `Podfile` |
 | 官方工作流 | `.github/workflows/release-ios.yml`（macos-26，跑全套测试，20~40 分钟），**已禁用** |
-| Actions 状态 | 已启用；`ios-quick` 启用（纯手动），另外三个（`release-ios` / `release-firmware` / `android-verify`）已禁用 |
+| Actions 状态 | `ios-quick` 启用，`release-ios` / `release-firmware` 禁用，三个都只手动触发 |
 | 构建脚本 | `scripts/build-ios-ipa.sh` → `CODE_SIGNING_ALLOWED=NO`，产物就是 unsigned IPA |
 | 依赖 | CocoaPods **1.16.2**（写死），`pod install --deployment` |
 | Pods | AMapNavi + AMapSearch（高德），平台 iOS 15.0 |
@@ -22,20 +22,19 @@
 
 ## 1. Actions 开关状态
 
-已配置好，不用再动。当前要求是「1 启用 + 3 禁用」：
+已配置好，不用再动。现在 3 个工作流全部只有手动触发，push 不会跑：
 
 | 工作流 | 触发 | 状态 |
 |---|---|---|
 | `iOS Quick Build (unsigned IPA)` | 只有手动 | 启用 |
-| `iOS Build and Verify`（release-ios） | push main 且改 `ios/**` 或 `firmware/boards/175/MotoNav/**` | 禁用 |
-| 固件发布那个（release-firmware） | push main 且改 `firmware/**` | 禁用 |
-| `Android Verify` | push main 且改 `android/**` | 禁用 |
+| `iOS Build and Verify`（release-ios） | 只有手动 | 禁用 |
+| `Verify universal firmware`（release-firmware） | 只有手动 | 禁用 |
 
 要改状态：`Actions` 页面 → 左侧点进工作流 → 右上角 `...` → `Disable workflow` / `Enable workflow`。
 
-禁用的原因：`firmware/**` 和 `firmware/boards/175/MotoNav/**` 匹配很宽，改一行固件就会触发一轮 40 分钟的 iOS 构建加一轮打包，而多数改动并不需要出包。
+自动触发已经去掉（原来 push 改 `ios/**` 或 `firmware/**` 就各跑一轮 40 分钟），所以启用也不会被 push 打扰；平时关着，需要完整回归时手动开一次。
 
-禁用状态记在 GitHub 上，不在代码里。**每次同步上游后要扫一眼左侧列表**，上游新增的工作流进来后默认是启用的。
+禁用状态记在 GitHub 上，不在代码里。
 
 ---
 
