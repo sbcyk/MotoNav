@@ -1,30 +1,8 @@
 # 历史资料
 
-以下文档只对应当时的版本，可能包含已经移除的入口、旧包名或旧构建方法。当前安装与编译请看[项目主页](../../README.md)或[当前文档](../README.md)，不要照抄旧 SHA1。
+这里只留 fork 起点那一次发布的记录。其余旧教程与旧发布说明已清理——它们描述的是上游发布物的下载入口，早已失效。
 
-历史 Releases 和 Git 记录保留；这里归档的是旧教程与更新记录。
+当前安装与编译请看[项目主页](../../README.md)或[当前文档](../README.md)。本仓库自己发版后的改动摘要写在仓库根的 `CHANGELOG.md`，不再往这里加新版本说明。
 
-本仓库自己发版后的改动摘要在仓库根的 `CHANGELOG.md`，不再往这里加新版本说明。
-
-- [INSTALL-BEGINNER.md](INSTALL-BEGINNER.md)
-- [INSTALL-IOS.md](INSTALL-IOS.md)
-- [PARITY-0.14.0.md](PARITY-0.14.0.md)
-- [MotoNav-Android-WorkBuddy-Guide.pdf](MotoNav-Android-WorkBuddy-Guide.pdf)
-- [RELEASE-2026-10-25.md](RELEASE-2026-10-25.md)
-- [RELEASE-2026-10-27.md](RELEASE-2026-10-27.md)
-- [RELEASE-2026-11-01.md](RELEASE-2026-11-01.md)
-- [RELEASE-IOS-FIRMWARE-2026-11-01.md](RELEASE-IOS-FIRMWARE-2026-11-01.md)
-- [RELEASE-ANDROID-8.3.21.md](RELEASE-ANDROID-8.3.21.md)
-- [RELEASE-ANDROID-8.3.23-webmotor.md](RELEASE-ANDROID-8.3.23-webmotor.md)
-- [RELEASE-ANDROID-8.3.26-single.31.md](RELEASE-ANDROID-8.3.26-single.31.md)
-- [RELEASE-FIRMWARE-7.12.1.md](RELEASE-FIRMWARE-7.12.1.md)
-- [RELEASE-FIRMWARE-7.12.10-pages.4.md](RELEASE-FIRMWARE-7.12.10-pages.4.md)
-- [RELEASE-FIRMWARE-7.12.3.md](RELEASE-FIRMWARE-7.12.3.md)
-- [RELEASE-FIRMWARE-7.12.9-junction.11.md](RELEASE-FIRMWARE-7.12.9-junction.11.md)
-- [RELEASE-IOS-0.13.7.md](RELEASE-IOS-0.13.7.md)
-- [RELEASE-IOS-0.13.8.md](RELEASE-IOS-0.13.8.md)
-- [RELEASE-IOS-0.15.0.md](RELEASE-IOS-0.15.0.md)
-- [VERIFY-2026-10-21.md](VERIFY-2026-10-21.md)
-- [VERIFY-2026-10-25.md](VERIFY-2026-10-25.md)
-- [VERIFY-2026-10-27.md](VERIFY-2026-10-27.md)
-- [VERIFY-IOS-FIRMWARE-2026-11-01.json](VERIFY-IOS-FIRMWARE-2026-11-01.json)
+- [RELEASE-IOS-FIRMWARE-2026-11-01.md](RELEASE-IOS-FIRMWARE-2026-11-01.md) —— 2026-11-01 发布结论（无外链）
+- [VERIFY-IOS-FIRMWARE-2026-11-01.json](VERIFY-IOS-FIRMWARE-2026-11-01.json) —— 同次发布的机器可读校验数据

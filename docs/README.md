@@ -12,4 +12,4 @@
 | iOS 云端出包 | [CI 操作步骤](IOS-CI-GUIDE.md) |
 | 媒体键协议 | [HID / AMS](BLE-HID.md) |
 
-旧版本教程、历史验证记录和安卓版说明统一放在 [archive](archive/README.md)，只对应当时版本，不能用旧包名或 SHA1 代替自己当前的打包结果。
+fork 起点那次发布的结论留在 [archive](archive/README.md)；其余旧教程与旧发布说明已清理。

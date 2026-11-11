@@ -50,7 +50,7 @@
 
 验证方式：跑一次 `python package_flasher.py --tools-dir <含 esptool.exe 的目录>`，它内部会校验版本一致性、镜像格式、清单哈希，全过才算干净。产物在 `output/firmware/<版本>/`，用完可以删。
 
-`docs/archive/RELEASE-*.md` 是当时的发布存档，里面仍是上游口径的版本号和下载页，是跟原文对照的记录，不要顺手改成当前版本号。
+`docs/archive/` 只留 fork 起点那次发布的结论记录：已去掉指向上游发布页与 CI 的链接，也不再写上游版本号，是和当前文档区隔开的历史快照。不要往里加新版本说明。
 
 ### tag 规范
 
@@ -407,6 +407,6 @@ iOS 出包：`Run workflow` → 选分支（build 号由 run 号自动生成，�
 | `scripts/home_preview.py` | PC 端预览主页画面，输出 `scripts/preview/*.png`，需 Pillow |
 | `.github/workflows/ios-quick.yml` | 精简工作流，8~15 分钟出 unsigned IPA |
 | `firmware/README.md` | 固件编译、打包与烧录说明（版本读 `RELEASE_VERSION`） |
-| `docs/archive/RELEASE-IOS-FIRMWARE-2026-11-01.md` | 2026-11-01 发布存档（上游 `phone.8` 口径） |
+| `docs/archive/RELEASE-IOS-FIRMWARE-2026-11-01.md` | 2026-11-01 发布结论记录（无外链） |
 
 仓库外、仅本机存在的：`..\builds\<日期>-<分支>\`（每次出包归档的 bin + SHA256）、`..\arduino-setup\`（工具链安装缓存）、`..\latest-2026.11.01-r2\`（上游下载包）。这些不进 git，换机器要自带。
