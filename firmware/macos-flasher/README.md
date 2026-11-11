@@ -1,8 +1,8 @@
 # macOS 一键烧录入口源码
 
-这里保存 7.12.10-phone.8 独立包使用的三个 `.command` 入口与官方工具来源清单。入口依赖同目录的固件镜像和双架构 esptool，不要只下载一个脚本运行。
+这里保存 macOS 一键包使用的三个 `.command` 入口与官方工具来源清单。入口依赖同目录的固件镜像和双架构 esptool，不要只下载一个脚本运行。
 
-普通用户下载 [完整 macOS ZIP](https://github.com/zyn950929/MotoNav/releases/download/motonav-2026.11.01-r2/MotoNav-1.75-v7.12.10-phone.8-macOS-OneClick.zip)。支持 Apple 芯片与 Intel；完整包自带工具，无需 Python / Arduino / Xcode。
+一键包由 `python3 firmware/package_flasher.py --tools-dir <Windows esptool 目录> --mac-tools-dir <目录>` 生成，两个参数都要给，步骤见[固件说明](../README.md)。支持 Apple 芯片与 Intel；完整包自带工具，无需 Python / Arduino / Xcode。
 
 默认升级写应用到 0x10000，保留兼容分区的设置；完整安装要求确认并会清空设置。`检查环境.command` 不写入设备。
 

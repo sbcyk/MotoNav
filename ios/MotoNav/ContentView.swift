@@ -369,7 +369,7 @@ struct ContentView: View {
                             Text("AI 辅助开发 · 仅供非商业使用")
                                 .font(.caption).foregroundColor(AppTheme.sub)
                         }
-                        Link("项目与使用说明",destination:URL(string:"https://github.com/zyn950929/MotoNav")!).font(.subheadline)
+                        Link("项目与使用说明",destination:URL(string:"https://github.com/sbcyk/MotoNav")!).font(.subheadline)
                     }
                 }
             }
