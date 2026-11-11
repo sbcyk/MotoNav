@@ -11,5 +11,6 @@
 | 版本改动 | [CHANGELOG](../CHANGELOG.md) |
 | iOS 云端出包 | [CI 操作步骤](IOS-CI-GUIDE.md) |
 | 媒体键协议 | [HID / AMS](BLE-HID.md) |
+| 展示素材与配图说明 | [MEDIA.md](MEDIA.md) |
 
 fork 起点那次发布的结论留在 [archive](archive/README.md)；其余旧教程与旧发布说明已清理。

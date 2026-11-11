@@ -46,7 +46,7 @@ iPhone + ESP32-S3 圆屏导航。手机端用高德 SDK 渲染地图、抓图压
 | --- | --- |
 | `ios/` | iPhone App 源码，Swift + CocoaPods（高德 AMapNavi / AMapSearch） |
 | `firmware/` | 固件源码、烧录包生成、打包脚本 |
-| `docs/` | 技术文档、需求清单、CI 说明 |
+| `docs/` | 技术文档、需求清单、CI 与素材说明 |
 | `scripts/` | iOS 打包、首页画面生成 |
 
 ## 构建

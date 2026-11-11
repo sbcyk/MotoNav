@@ -517,16 +517,18 @@ FQBN：`esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRA
 
 注意：必须保留 `firmware/libraries/MotoNavIpcStackGuard`，脚本会显式传 `-Wl,--wrap=xTaskCreatePinnedToCore`。
 
-### 9.4 iOS
+### 9.2 iOS
 
 ```sh
 bash build-ios.sh     # Xcode + CocoaPods 1.16.2
-# 输出：output/ios/MotoNav-0.16.2-build16-unsigned.ipa
+# 输出：output/ios/MotoNav-<版本>-build<号>.ipa
 ```
 
 IPA 未签名，需用 Sideloadly / iLoader 自签；免费账号 7 天续签。App 内需填自己的高德 iOS Key（Bundle ID 必须与签名后的实际 Bundle ID 一致）。
 
-### 9.5 一键烧录包内部机制（你手上这份，逐行核对过）
+### 9.3 一键烧录包内部机制（当时那份，逐行核对过）
+
+> 下面写的版本号是当时那份包里的值；现在的包版本由 `firmware/RELEASE_VERSION` 决定，校验逻辑不变。
 
 `flash.ps1` 做了这些事，你可以据此判断它是否可信：
 

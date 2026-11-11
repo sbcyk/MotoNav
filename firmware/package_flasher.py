@@ -72,7 +72,7 @@ def main():
         for p in sorted(set(files)):
             require('rebelboot' not in p.name.lower(),'Private source asset found')
             entry=zipfile.ZipInfo('MotoNav/'+p.relative_to(REPO).as_posix());entry.create_system=3;entry.compress_type=zipfile.ZIP_DEFLATED
-            entry.external_attr=(stat.S_IFREG|(0o755 if p.suffix=='.command' else 0o644))<<16;z.writestr(entry,p.read_bytes())
+            entry.external_attr=(stat.S_IFREG|0o644)<<16;z.writestr(entry,p.read_bytes())
     assets.append(source_zip)
     record={'version':version,'genericBoot':True,'files':{p.name:{'bytes':p.stat().st_size,'sha256':digest(p)} for p in assets}}
     (out/'release-assets.json').write_text(json.dumps(record,ensure_ascii=False,indent=2)+'\n','utf-8')

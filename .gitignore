@@ -1,23 +1,14 @@
 # Local tools, generated identities and output
 .tools/
 output/
-**/.gradle/
-**/.kotlin/
 **/.local/
 **/.build/
 **/build/
 **/dist/
-**/local.properties
-**/personal.properties
-**/keystore/
-*.jks
-*.keystore
 *.p12
 *.pfx
 *.pem
 *.key
-*.apk
-*.aab
 *.log
 .env
 .env.*
@@ -45,8 +36,3 @@ scripts/preview/
 .idea/
 .vscode/
 *.iml
-
-*.pk8
-*.x509.pem
-*.idsig
-*.class

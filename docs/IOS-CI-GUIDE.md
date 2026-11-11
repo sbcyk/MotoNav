@@ -10,7 +10,7 @@
 |---|---|
 | 你的 fork | `github.com/sbcyk/MotoNav`，public，main 是自己的开发主线 |
 | fork 的 parent | `CharlesXu/MotoNav`；本仓库只保留来源声明，不同步上游 |
-| iOS 源码 | `ios/` 129 个文件，`MotoNav.xcworkspace` + `Podfile` |
+| iOS 源码 | `ios/` 128 个文件，`MotoNav.xcworkspace` + `Podfile` |
 | 官方工作流 | `.github/workflows/release-ios.yml`（macos-26，跑全套测试，20~40 分钟），**已禁用** |
 | Actions 状态 | `ios-quick` 启用，`release-ios` / `release-firmware` 禁用，三个都只手动触发 |
 | 构建脚本 | `scripts/build-ios-ipa.sh` → `CODE_SIGNING_ALLOWED=NO`，产物就是 unsigned IPA |

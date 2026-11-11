@@ -12,12 +12,12 @@
 |---|---|
 | 本仓库 | `github.com/sbcyk/MotoNav`，public。**main 是自己的开发主线**，2026-11-03 起不再只做上游镜像 |
 | 仓库地址（SSH） | `git@github.com:sbcyk/MotoNav.git` |
-| 深度技术文档 | 仓库内 `docs/MotoNav-技术文档.md`（933 行，14 章，协议逐条、时序、地图管线、侧载方案） |
+| 深度技术文档 | 仓库内 `docs/MotoNav-技术文档.md`（900 行，16 章，协议逐条、时序、地图管线、侧载方案） |
 | iOS CI 工作流 | 仓库内 `.github/workflows/ios-quick.yml`，用法见 `docs/IOS-CI-GUIDE.md` |
 | 许可证 | 非商业，见 `LICENSE.md` |
 | 提交身份 | **仅本仓库 local 配置**：`sbcyk <126747153+sbcyk@users.noreply.github.com>`，全局配置仍是公司邮箱，不要改全局 |
 
-仓库规模（`git ls-files` 实测）：`firmware/` 785 个文件，`ios/` 129，`docs/` 53，合计 990。
+仓库规模（`git ls-files` 实测）：`firmware/` 785 个文件，`ios/` 128，`docs/` 34，合计 969。
 
 ### 工作范围：只做 iOS 端
 
@@ -349,7 +349,7 @@ Windows 编不了 iOS，走 GitHub Actions。Actions 已启用，工作流在 `.
 | `release-ios.yml` | 完整回归：装 Pods、编 Release、跑 webmotor / 息屏底图 / 偏航重算 / 到达 / 时钟协议 / 音乐 AMS / 分包传输等测试，最后出 IPA 与源码包（约 40 分钟） |
 | `release-firmware.yml` | 固件单元测试：`firmware/tests/*Test.cpp`、idle-power-off、raster-work（带 ASan/UBSan），并检查两个打包脚本能起 |
 
-三个都在 GitHub 上是**禁用**状态，要跑先 `Actions` 页面 → 左侧点进工作流 → 右上角 `...` → `Enable workflow`，跑完记得再禁用。之前的自动触发（`push` 改 `ios/**` 或 `firmware/**` 就跑 40 分钟）已经去掉，所以现在启用也不会被 push 打扰。
+`ios-quick` 在 GitHub 上是**启用**状态，直接点 `Run workflow` 就能出包。`release-ios` 与 `release-firmware` 仍是**禁用**，要跑先 `Actions` 页面 → 左侧点进工作流 → 右上角 `...` → `Enable workflow`；因为它们已经没有 push 触发，忘了再禁用也不会自己跑起来。之前 `push` 改 `ios/**` 或 `firmware/**` 就自动跑一轮 40 分钟，这个触发已经去掉。
 
 iOS 出包：`Run workflow` → 选分支（build 号由 run 号自动生成，不再手填说明）→ 跑完在 run 页面下载 artifact。
 固件出包：本地 `python firmware/package_flasher.py --tools-dir <含 esptool.exe 的目录>`，产物在 `output/firmware/<版本>/`。只给自己装机的话直接用 esptool 烧 app 分区即可，不必打包。
@@ -399,10 +399,10 @@ iOS 出包：`Run workflow` → 选分支（build 号由 run 号自动生成，�
 | 文件 | 内容 |
 |---|---|
 | `AGENTS.md`（本文件） | 项目总索引：架构、改动点、构建、硬约束、约定 |
-| `docs/MotoNav-技术文档.md` | 933 行深度文档，协议逐条、时序、地图管线、侧载方案 |
+| `docs/MotoNav-技术文档.md` | 900 行深度文档，协议逐条、时序、地图管线、侧载方案 |
 | `CHANGELOG.md` | 版本改动摘要，Keep a Changelog 格式（发版时写） |
 | `docs/需求清单.md` | 需求、进度、阻塞项、验收记录（唯一记录处） |
-| `docs/IOS-CI-GUIDE.md` | iOS 云端出包 9 步操作 |
+| `docs/IOS-CI-GUIDE.md` | iOS 云端出包与装机步骤（0–8 节） |
 | `scripts/home_sprites.py` | 生成主页两态画面 `resources/HomeSprites.h`（8bpp 233×233，两态共用一张 256 色调色板）。参考图都在 `assets/reference/`：<br>· `home-v3-standing.png` 已连接态：站姿牵马，黄金树、王城、峡谷一起入画<br>· `home-v3-seated.png` 未连接态：与前者同源生成，只把人改成独坐、马去掉<br>脚本以母版为底，只把「人马矩形」和「赐福柱带」两块换成另一张图的像素（矩形 + 高斯羽化），区外逐像素复制母版；两态共用一张调色板 + 同一个 Bayer 抖动场（偏移只跟坐标有关，同一坐标同色必得同一索引），最后校验“两区之外失配 = 0”，不为 0 直接报错。`HOME_BEAM_*` 锚点与 `HOME_MAN_*` / `HOME_HRS_*` 两块矩形也由它写出；锚点 x 取“画面下部暖色行数最多的那一列”，y 取 `main()` 里传的基线常数（当前 204）——换参考图或改取景框后要重新量基线，对不上脚本会报错而不是静默跑偏。旧的 `home-standing*.png` / `home-seated.png` / `home-dual-pose.png` 已不引用，留作备选 |
 | `scripts/home_preview.py` | PC 端预览主页画面，输出 `scripts/preview/*.png`，需 Pillow |
 | `.github/workflows/ios-quick.yml` | 精简工作流，8~15 分钟出 unsigned IPA |
