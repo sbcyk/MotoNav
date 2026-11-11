@@ -47,7 +47,7 @@ struct MotoNavApp: App {
             }
         }
         BleLink.shared.connect()
-        LocationService.shared.start()
+        LocationService.shared.refresh()                // v1.3 起只取一次位置，不再常开定位
         Settings.shared.startDayNight()                 // 夜间配色、亮度按日出日落自动切换（每分钟检查）
         NaviBridge.shared.attach()
     }

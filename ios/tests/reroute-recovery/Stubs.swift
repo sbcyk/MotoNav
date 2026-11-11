@@ -20,7 +20,13 @@ enum TextImage {
 }
 final class Speech {static let shared=Speech();func stopNow(){};func speak(_ text:String){}}
 final class RideRecorder {static let shared=RideRecorder();func start(_ text:String){};func finish(){}}
-final class LocationService {static let shared=LocationService();func setPrecise(_ on:Bool){}}
+final class LocationService {
+    static let shared=LocationService();var navigating=false;var isAuthorized=true
+    func refresh(){}
+    func beginNavigation(){navigating=true}
+    func endNavigation(){navigating=false}
+    func currentFix(timeout:TimeInterval=6,maxAge:TimeInterval=15) async -> CLLocation?{nil}
+}
 final class MapFeeder {
     static let shared=MapFeeder();var keys:[String]=[]
     func onNaviStart(){};func onNaviEnd(){}

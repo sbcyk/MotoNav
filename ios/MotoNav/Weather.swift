@@ -17,6 +17,7 @@ final class Weather: ObservableObject {
     private var messages: [String] = []
     private var images: [(Int, TextImage.Img?)] = []
     private let geocoder = CLGeocoder()
+    private var locating = false
 
     var displaySummary:String {
         if info.contains("失败") || info.contains("HTTP") || info.contains("Error") || info.contains("无效") { return "天气暂未更新，请检查配置或稍后重试" }
@@ -38,12 +39,29 @@ final class Weather: ObservableObject {
     private func clearScreen() {
         BleLink.shared.clearWeather()
     }
+    /// v1.3 定位不再常开：滑到天气页时现等一次，等到就直接查，等不到才报错
+    private func awaitFix(force: Bool) {
+        guard !locating else { return }
+        locating = true
+        info = "正在获取定位…"
+        Task { @MainActor in
+            // 非导航时位置本来就不更新，给 10 分钟窗口，别每次滑到天气页都重新取一次
+            let fix = await LocationService.shared.currentFix(maxAge: 600)
+            self.locating = false
+            guard fix != nil else {
+                self.info = LocationService.shared.isAuthorized ? "定位超时，稍后再试" : "没有定位权限，请到系统设置允许定位"
+                return
+            }
+            self.request(force: force)
+        }
+    }
+
     func request(force: Bool = false) {
         guard !host.isEmpty, !key.isEmpty else { info = "请先配置和风天气"; clearScreen(); return }
         if !force && !messages.isEmpty && Date().timeIntervalSince(lastAt) < cacheLifetime { push(); return }
         guard !busy, Date() >= retryAt else { return }
-        guard let loc = LocationService.shared.location, abs(loc.timestamp.timeIntervalSinceNow) < 120,
-              loc.horizontalAccuracy >= 0 else { info = "等待手机定位，请稍后重试"; LocationService.shared.start(); return }
+        guard let loc = LocationService.shared.location, abs(loc.timestamp.timeIntervalSinceNow) < 600,
+              loc.horizontalAccuracy >= 0 else { awaitFix(force: force); return }
         busy = true; info = "正在查天气…"
         generation += 1
         let id = generation, accountHost = host, accountKey = key

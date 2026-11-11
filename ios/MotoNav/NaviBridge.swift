@@ -191,7 +191,6 @@ final class NaviBridge: NSObject, ObservableObject {
         // Runtime protocol registration lives on the per-session callback relay.
         arrival.preparePlan()
         installCallbacks()
-        m.allowsBackgroundLocationUpdates = true
         m.pausesLocationUpdatesAutomatically = false
         m.isUseInternalTTS = false              // 高德自己的播报关掉，文字交给我们念（播报时压低音乐）
         // 多路线导航模式：导航途中高德才会推荐更快的路线（onSuggestChangeMainNaviRoute）。
@@ -384,9 +383,10 @@ final class NaviBridge: NSObject, ObservableObject {
                                 myLat: me?.lat ?? .nan, myLng: me?.lng ?? .nan)          // 偏航跟随原路线 + 圆屏原路线细线
         emulating = emulate; emuPaused = false
         if emulate { emuSpeed = NavigationSpeed.values.contains(preferredSimulationSpeed) ? preferredSimulationSpeed : 60; manager.setEmulatorNaviSpeed(Int32(emuSpeed)) }
+        if !emulate { manager.allowsBackgroundLocationUpdates = true }   // v1.3 真导航才拿后台定位资格，别在启动时就占着
         let ok = emulate ? manager.startEmulatorNavi() : manager.startGPSNavi()
         if ok && arrival.acceptsGuidance(token) {
-            if !emulate { RideRecorder.shared.start("导航"); LocationService.shared.setPrecise(true) }
+            if !emulate { RideRecorder.shared.start("导航"); LocationService.shared.beginNavigation() }
             info = emulate ? "模拟导航中" : "导航中"
             tick?.invalidate()
             tick = Timer.scheduledTimer(withTimeInterval: NaviBridge.TICK, repeats: true) { [weak self] _ in
@@ -427,7 +427,8 @@ final class NaviBridge: NSObject, ObservableObject {
             guard let event = event, arrival.complete(token, event: event) else { return }
         } else { arrival.cancel(token) }
         RideRecorder.shared.finish()
-        LocationService.shared.setPrecise(false)
+        manager.allowsBackgroundLocationUpdates = false      // v1.3 导航结束就交还后台定位
+        LocationService.shared.endNavigation()
         MapFeeder.shared.onNaviEnd()
         ShareGuide.shared.stop()
         tick?.invalidate(); tick = nil
@@ -842,7 +843,7 @@ final class NaviBridge: NSObject, ObservableObject {
         cruiseRaw = "巡航已开始，等高德发来数据…"
         info = "巡航中"
         BleLink.shared.send("#z,1")
-        LocationService.shared.setPrecise(true)               // 位置用手机定位（锁屏也继续）
+        LocationService.shared.beginNavigation()              // 位置用手机定位（锁屏也继续）
         cruiseTick?.invalidate()
         cruiseTick = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in self?.onCruiseTick() }
         return nil
@@ -866,7 +867,7 @@ final class NaviBridge: NSObject, ObservableObject {
         MapFeeder.shared.onNaviEnd()
         cruiseTick?.invalidate(); cruiseTick = nil
         manager.detectedMode = .none
-        LocationService.shared.setPrecise(false)
+        LocationService.shared.endNavigation()
         BleLink.shared.send("#z,0")
     }
 

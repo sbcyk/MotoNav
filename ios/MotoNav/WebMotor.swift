@@ -230,7 +230,7 @@ final class WebMotorSession: ObservableObject {
                 if let match=self.tracker?.update(p,accuracy:3,now:ProcessInfo.processInfo.systemUptime) {self.confirmedArrival=match.arrived}
                 self.render(p, off: 0)
             }
-        } else { RideRecorder.shared.start("网页路线导航"); LocationService.shared.setPrecise(true) }
+        } else { RideRecorder.shared.start("网页路线导航"); LocationService.shared.beginNavigation() }
         render(route.points[0], off: 0)
     }
     func stop(sendCancel:Bool=true) {
@@ -238,7 +238,7 @@ final class WebMotorSession: ObservableObject {
         rerouteTask?.cancel();rerouteTask=nil;reroutePolicy.reset()
         if rerouting {BleLink.shared.send("#y,0")}
         watchdog?.invalidate();watchdog=nil;WebRouteMetadata.shared.stop()
-        if running { Speech.shared.stopNow(); RideRecorder.shared.finish(); MapFeeder.shared.onNaviEnd(); if sendCancel {BleLink.shared.send("C")}; LocationService.shared.setPrecise(false) }
+        if running { Speech.shared.stopNow(); RideRecorder.shared.finish(); MapFeeder.shared.onNaviEnd(); if sendCancel {BleLink.shared.send("C")}; LocationService.shared.endNavigation() }
         running = false; rerouting = false; UIApplication.shared.isIdleTimerDisabled = false
     }
     private func at(_ distance: Double) -> MotorPoint {
