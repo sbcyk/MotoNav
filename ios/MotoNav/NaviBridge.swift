@@ -383,7 +383,7 @@ final class NaviBridge: NSObject, ObservableObject {
                                 myLat: me?.lat ?? .nan, myLng: me?.lng ?? .nan)          // 偏航跟随原路线 + 圆屏原路线细线
         emulating = emulate; emuPaused = false
         if emulate { emuSpeed = NavigationSpeed.values.contains(preferredSimulationSpeed) ? preferredSimulationSpeed : 60; manager.setEmulatorNaviSpeed(Int32(emuSpeed)) }
-        if !emulate { manager.allowsBackgroundLocationUpdates = true }   // v1.2 真导航才拿后台定位资格，别在启动时就占着
+        if !emulate { manager.allowsBackgroundLocationUpdates = true }   // v1.3 真导航才拿后台定位资格，别在启动时就占着
         let ok = emulate ? manager.startEmulatorNavi() : manager.startGPSNavi()
         if ok && arrival.acceptsGuidance(token) {
             if !emulate { RideRecorder.shared.start("导航"); LocationService.shared.beginNavigation() }
@@ -427,7 +427,7 @@ final class NaviBridge: NSObject, ObservableObject {
             guard let event = event, arrival.complete(token, event: event) else { return }
         } else { arrival.cancel(token) }
         RideRecorder.shared.finish()
-        manager.allowsBackgroundLocationUpdates = false      // v1.2 导航结束就交还后台定位
+        manager.allowsBackgroundLocationUpdates = false      // v1.3 导航结束就交还后台定位
         LocationService.shared.endNavigation()
         MapFeeder.shared.onNaviEnd()
         ShareGuide.shared.stop()

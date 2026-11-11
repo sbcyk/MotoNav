@@ -39,13 +39,14 @@ final class Weather: ObservableObject {
     private func clearScreen() {
         BleLink.shared.clearWeather()
     }
-    /// v1.2 定位不再常开：滑到天气页时现等一次，等到就直接查，等不到才报错
+    /// v1.3 定位不再常开：滑到天气页时现等一次，等到就直接查，等不到才报错
     private func awaitFix(force: Bool) {
         guard !locating else { return }
         locating = true
         info = "正在获取定位…"
         Task { @MainActor in
-            let fix = await LocationService.shared.currentFix()
+            // 非导航时位置本来就不更新，给 10 分钟窗口，别每次滑到天气页都重新取一次
+            let fix = await LocationService.shared.currentFix(maxAge: 600)
             self.locating = false
             guard fix != nil else {
                 self.info = LocationService.shared.isAuthorized ? "定位超时，稍后再试" : "没有定位权限，请到系统设置允许定位"
@@ -59,7 +60,7 @@ final class Weather: ObservableObject {
         guard !host.isEmpty, !key.isEmpty else { info = "请先配置和风天气"; clearScreen(); return }
         if !force && !messages.isEmpty && Date().timeIntervalSince(lastAt) < cacheLifetime { push(); return }
         guard !busy, Date() >= retryAt else { return }
-        guard let loc = LocationService.shared.location, abs(loc.timestamp.timeIntervalSinceNow) < 120,
+        guard let loc = LocationService.shared.location, abs(loc.timestamp.timeIntervalSinceNow) < 600,
               loc.horizontalAccuracy >= 0 else { awaitFix(force: force); return }
         busy = true; info = "正在查天气…"
         generation += 1

@@ -27,17 +27,17 @@ final class IndependentPlanner:ObservableObject {
         guard !Settings.shared.keysMissing else{message="请先填写自己的高德 iOS Key";return}
         guard let end=end else{message="请选择目的地";return}
         invalidate();let token=generation
-        busy=true;message="正在规划\(mode.rawValue)路线…"
+        // v1.3 起步不再依赖常驻定位：没有手动起点就得先等一次定位。文案在设置 busy 时一并定好，别先闪一帧“正在规划”
+        busy=true;message=start == nil ? "正在定位…" : "正在规划\(mode.rawValue)路线…"
         task=Task { @MainActor [weak self] in
-            // v1.2 起步不再依赖常驻定位：没有手动起点就现等一次定位，等待期间保持 busy（页面显示转圈）
             let origin:MotorPoint
             let manualStart=self?.start          // 显式取一次：self?.start 是双重可选，直接 if let 只解一层
             if let start=manualStart{
                 origin=start
             }else{
-                self?.message="正在定位…"
+                guard let self=self,self.generation==token,!Task.isCancelled else{return}   // 视图已关就别再发起定位
                 let fix=await LocationService.shared.currentFix()
-                guard let self=self,self.generation==token,!Task.isCancelled else{return}
+                guard self.generation==token,!Task.isCancelled else{return}
                 guard let fix=fix else{
                     self.busy=false
                     self.message=LocationService.shared.isAuthorized ? "定位超时，可手动选择起点后重试" : "没有定位权限，请在系统设置里允许定位，或手动选择起点"
@@ -163,7 +163,7 @@ struct IndependentPlannerView:View {
             model.plan(.motorcycle)
         }else if !waitingForInitialFix{
             waitingForInitialFix=true
-            // v1.2 定位改成单次取点：这里主动等一次。单次失败不会再有 @Published 更新把它救回来，
+            // v1.3 定位改成单次取点：这里主动等一次。单次失败不会再有 @Published 更新把它救回来，
             // 所以必须带超时收尾，否则会一直停在“等待当前位置后自动规划…”
             Task { @MainActor in
                 let fix=await LocationService.shared.currentFix()
