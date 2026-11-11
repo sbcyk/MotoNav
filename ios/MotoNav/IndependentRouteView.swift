@@ -277,7 +277,7 @@ struct IndependentPlannerView:View {
         CardView{
             HStack(spacing:12){
                 ProgressView()
-                Text("正在规划摩托车路线…").font(.subheadline).foregroundColor(AppTheme.sub)
+                Text(model.message.isEmpty ? "正在规划摩托车路线…" : ContentView.userMessage(model.message)).font(.subheadline).foregroundColor(AppTheme.sub)
             }.frame(maxWidth:.infinity,minHeight:44,alignment:.leading)
         }
     }
