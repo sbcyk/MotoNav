@@ -86,30 +86,48 @@ struct IndependentPlannerView:View {
     var body:some View {
         NavigationView{
             ScrollView{
-                VStack(alignment:.leading,spacing:16){
+                VStack(alignment:.leading,spacing:14){
+                    header
                     inputCard
-                    HStack{
-                        Button("路线历史"){showHistory=true};Spacer()
-                        Button("高德登录／验证"){login=true}
-                    }.font(.subheadline)
-                    if waitingForInitialFix{Text("已选择目的地，等待当前位置后自动规划…").font(.footnote).foregroundColor(ContentView.sub)}
-                    else if !model.message.isEmpty{Text(ContentView.userMessage(model.message)).font(.footnote).foregroundColor(ContentView.sub)}
-                    if let route=selectedRoute{routeOptions(route)}
-                    Text("账号过期时，可在这里重新登录高德。").font(.footnote).foregroundColor(ContentView.sub)
-                    Text("锁屏前等待整条路线道路底图就绪；后台继续读取缓存、定位、语音和蓝牙，未缓存区域需回前台补充。").font(.footnote).foregroundColor(ContentView.sub)
-                }.padding(16)
-            }.background(ContentView.bg).navigationTitle("摩托车路线")
-                .toolbar{ToolbarItem(placement:.cancellationAction){Button("返回首页"){dismiss()}}}
-        }.foregroundColor(AppTheme.text).tint(ContentView.pink)
+                    // 工具行贴着起终点卡，别被方案区挤到页面最底下
+                    toolRow
+                    if waitingForInitialFix{
+                        notice("已选择目的地，等待当前位置后自动规划…")
+                    }else if !model.message.isEmpty && !model.busy{
+                        // 规划中由 planningCard 显示进度，这里再说一遍就是重复
+                        notice(ContentView.userMessage(model.message))
+                    }
+                    if let route=selectedRoute{routeSection(route)}
+                    else if model.busy{planningCard}
+                    notes
+                }
+                .padding(.horizontal,16)
+                .padding(.top,6)
+                .padding(.bottom,24)          // 底部留白交给 safeAreaInset 的底栏，这里只留常规间距
+                .frame(maxWidth:760,alignment:.leading)
+                .frame(maxWidth:.infinity)
+            }
+            .safeAreaInset(edge:.bottom,spacing:0){bottomBar}
+            .background(AppTheme.bg.ignoresSafeArea())
+            .navigationTitle("").navigationBarTitleDisplayMode(.inline)
+            .toolbar{ToolbarItem(placement:.cancellationAction){Button("返回首页"){dismiss()}}}
+        }.foregroundColor(AppTheme.text).tint(AppTheme.accent)
         .sheet(isPresented:Binding(get:{pick != nil},set:{if !$0{pick=nil}})){
             RoutePointPicker(title:pick==0 ? "选择起点":"选择目的地",near:model.start){point in
                 waitingForInitialFix=false
-                if pick==0{model.start=point}else{model.end=point};model.invalidate();pick=nil
+                if pick==0{model.start=point}else{model.end=point}
+                // 已经有方案时改了起终点，旧方案作废：明确提示要重算，别让人以为还在看旧的三条
+                let planned=!model.routes.isEmpty
+                model.invalidate()
+                if planned{model.message="起终点已改动，点「规划摩托车路线」重新算路"}
+                pick=nil
             }
         }
         .sheet(isPresented:$waypoints){RouteWaypointEditor(points:model.vias,near:model.start){points in
             waitingForInitialFix=false
+            let planned=!model.routes.isEmpty
             model.vias=points;model.invalidate()
+            if planned{model.message="途经点已改动，点「规划摩托车路线」重新算路"}
         }}
         .sheet(isPresented:$showHistory){MotorHistoryView(bicycle:false){entry in
             waitingForInitialFix=false
@@ -156,66 +174,233 @@ struct IndependentPlannerView:View {
         }
     }
     private var selectedRoute:MotorRoute?{model.routes.indices.contains(model.selected) ? model.routes[model.selected]:nil}
+    private var header:some View {
+        VStack(alignment:.leading,spacing:3){
+            Text(model.routes.isEmpty ? "摩托车路线":"选择路线")
+                .font(.system(size:28,weight:.heavy,design:.rounded))
+                .foregroundColor(AppTheme.text)
+            Text(headerSubtitle).font(.footnote).foregroundColor(AppTheme.sub).lineLimit(2)
+        }
+        .frame(maxWidth:.infinity,alignment:.leading)
+    }
+    private var headerSubtitle:String {
+        let from=model.start?.name.isEmpty == false ? model.start!.name : "当前位置"
+        guard let end=model.end else{return "确认起点和目的地，再规划摩托车路线"}
+        return "\(from) → \(end.name.isEmpty ? "目的地":end.name)"
+    }
+    private func notice(_ text:String)->some View {
+        Label(text,systemImage:"info.circle")
+            .font(.footnote).foregroundColor(AppTheme.sub)
+            .frame(maxWidth:.infinity,alignment:.leading)
+    }
     private var inputCard:some View {
         CardView{
-            Text("摩托车路线")
-                .font(.title3.bold())
-            Text("确认起点和目的地，再添加沿途要经过的地点。")
-                .font(.footnote).foregroundColor(ContentView.sub)
-            Button{pick=0}label:{
-                Label(model.start?.name.isEmpty == false ? model.start!.name:"我的位置（点此更改起点）",systemImage:"location")
-                    .frame(maxWidth:.infinity,minHeight:44,alignment:.leading)
+            VStack(spacing:2){
+                pointRow(icon:"circle.fill",tint:AppTheme.green,label:"起点",
+                         value:model.start?.name.isEmpty == false ? model.start!.name : "我的位置",
+                         action:{pick=0})
+                Divider().opacity(0.3).padding(.vertical,2)
+                pointRow(icon:"mappin",tint:AppTheme.red,label:"目的地",
+                         value:model.end?.name.isEmpty == false ? model.end!.name : "选择目的地",
+                         action:{pick=1})
             }
-            if model.start != nil{Button("使用当前位置"){model.start=nil;model.invalidate()}.font(.footnote).frame(minHeight:36)}
-            Divider().opacity(0.35)
-            Button{pick=1}label:{
-                Label(model.end?.name.isEmpty == false ? model.end!.name:"输入目的地",systemImage:"mappin.and.ellipse")
-                    .frame(maxWidth:.infinity,minHeight:44,alignment:.leading)
-            }
-            if let point=model.end{
-                Button("收藏目的地"){Favorites.shared.add(SearchService.Place(name:point.name,address:"",lat:point.lat,lng:point.lng))}
-                    .font(.footnote).frame(minHeight:36)
-            }
-            Button{waypoints=true}label:{
-                Label(model.vias.isEmpty ? "添加途经点（最多三个）":"途经："+model.vias.map{$0.name}.joined(separator:" → "),systemImage:"point.topleft.down.curvedto.point.bottomright.up")
-                    .frame(maxWidth:.infinity,minHeight:44,alignment:.leading)
-            }
-            PillButton(title:model.busy ? "正在规划…":"规划摩托车路线",color:ContentView.pink,enabled:!model.busy && model.end != nil){
+            PillButton(title:model.busy ? "正在规划…":"规划摩托车路线",color:AppTheme.accent,enabled:!model.busy && model.end != nil){
                 waitingForInitialFix=false
                 model.plan(.motorcycle)
             }
+            .padding(.top,4)
         }
     }
-    private func routeOptions(_ route:MotorRoute)->some View {
-        VStack(alignment:.leading,spacing:14){
-            MotorMap(route:route,position:nil,overview:true).frame(height:260).clipShape(RoundedRectangle(cornerRadius:18))
-            if !route.detailedGuidance {
-                Text("已取得路线轨迹，暂无分段转向指引，请按地图路线行进。")
-                    .font(.footnote).foregroundColor(ContentView.sub)
-            }
-            ForEach(Array(model.routes.enumerated()),id:\.offset){i,r in
-                Button{model.selected=i}label:{
-                    HStack{
-                        Image(systemName:model.selected==i ? "checkmark.circle.fill":"circle")
-                        VStack(alignment:.leading,spacing:4){Text("方案 \(i+1) · \(NaviBridge.durText(r.seconds))").bold();Text(NaviBridge.distText(r.totalMeters)).font(.subheadline)}
-                        Spacer()
-                    }.padding(14).background(RoundedRectangle(cornerRadius:14).fill(ContentView.card))
+    /// 起终点一行：左边色点标身份，右边箭头表示可改
+    private func pointRow(icon:String,tint:Color,label:String,value:String,action:@escaping()->Void)->some View {
+        Button(action:action){
+            HStack(spacing:12){
+                Image(systemName:icon)
+                    .font(.system(size:13,weight:.bold))
+                    .foregroundColor(tint)
+                    .frame(width:30,height:30)
+                    .background(Circle().fill(tint.opacity(0.14)))
+                VStack(alignment:.leading,spacing:1){
+                    Text(label).font(.caption2).foregroundColor(AppTheme.sub)
+                    Text(value).font(.subheadline.weight(.semibold)).foregroundColor(AppTheme.text).lineLimit(1)
                 }
+                Spacer(minLength:8)
+                Image(systemName:"chevron.right").font(.caption.weight(.bold)).foregroundColor(AppTheme.stroke)
             }
-            PillButton(title:"开始导！",color:ContentView.pink,enabled:!model.busy){begin(route,false)}
-            DisclosureGroup("模拟与高级选项") {
-                VStack(alignment:.leading,spacing:12){
-                    Picker("模拟速度",selection:$simulationSpeed){ForEach(NavigationSpeed.values,id:\.self){Text("\($0) km/h").tag($0)}}
-                        .pickerStyle(.segmented)
-                    GlassButton(title:"模拟导航",icon:"play.circle",style:.tinted,enabled:!model.busy){begin(route,true)}
+            .padding(.vertical,4)
+            .contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+    /// 途经 / 收藏 / 历史 / 登录：一行小胶囊，窄屏可以横着推
+    private var toolRow:some View {
+        ScrollView(.horizontal,showsIndicators:false){
+            HStack(spacing:8){
+                GlassChip(title:model.vias.isEmpty ? "途经点":"途经 \(model.vias.count)",icon:"arrow.triangle.branch",compact:true){waypoints=true}
+                if model.end != nil{
+                    GlassChip(title:"收藏目的地",icon:"star",compact:true){
+                        guard let point=model.end else{return}
+                        Favorites.shared.add(SearchService.Place(name:point.name,address:"",lat:point.lat,lng:point.lng))
+                    }
                 }
-                .padding(.top,12)
+                if model.start != nil{
+                    GlassChip(title:"使用当前位置",icon:"location.fill",compact:true){model.start=nil;model.invalidate()}
+                }
+                GlassChip(title:"路线历史",icon:"clock.arrow.circlepath",compact:true){showHistory=true}
+                GlassChip(title:"高德登录",icon:"key.fill",compact:true){login=true}
             }
-            .font(.subheadline.weight(.semibold))
-            .foregroundColor(AppTheme.text)
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius:14).fill(AppTheme.card))
+            .padding(.vertical,2)
         }
+    }
+    private var planningCard:some View {
+        CardView{
+            HStack(spacing:12){
+                ProgressView()
+                Text("正在规划摩托车路线…").font(.subheadline).foregroundColor(AppTheme.sub)
+            }.frame(maxWidth:.infinity,minHeight:44,alignment:.leading)
+        }
+    }
+    private var notes:some View {
+        VStack(alignment:.leading,spacing:5){
+            Text("账号过期时，用上面的「高德登录」重新登录。")
+            Text("锁屏前等待整条路线底图就绪；后台继续读取缓存、定位、语音和蓝牙，未缓存区域需回前台补充。")
+        }.font(.caption).foregroundColor(AppTheme.sub).padding(.top,2)
+    }
+    @ViewBuilder private var bottomBar:some View {
+        // busy 时 routes 已被 invalidate 清空，这里必然有方案可选，不用再判进度态
+        if let route=selectedRoute{
+            VStack(spacing:0){
+                Divider().opacity(0.35)
+                PillButton(title:"开始导！",color:AppTheme.accent){begin(route,false)}
+                    .padding(.horizontal,16).padding(.top,12).padding(.bottom,8)
+            }
+            // 铺满整条底栏，材质要一直铺到 Home 指示条下面，所以直接用 ultraThinMaterial 而不走 liquidGlass
+            .background(.ultraThinMaterial,ignoresSafeAreaEdges:.bottom)
+        }
+    }
+    /// 选方案：上面一张能看全三条线的地图，下面按方案列卡片；点哪条地图就高亮哪条
+    private func routeSection(_ route:MotorRoute)->some View {
+        VStack(alignment:.leading,spacing:12){
+            MotorRoutesMap(routes:model.routes,selected:model.selected)
+                .frame(height:300)
+                .clipShape(RoundedRectangle(cornerRadius:22,style:.continuous))
+                .overlay(RoundedRectangle(cornerRadius:22,style:.continuous).strokeBorder(AppTheme.stroke.opacity(0.28),lineWidth:1))
+                .overlay(alignment:.topLeading){
+                    Text(model.routes.count > 1 ? "\(model.routes.count) 条方案 · 点选高亮":"高德分享路线")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(AppTheme.text)
+                        .padding(.horizontal,10).padding(.vertical,6)
+                        .liquidGlass(Capsule())
+                        .padding(12)
+                }
+                .accessibilityElement(children:.ignore)
+                .accessibilityLabel("路线预览，共 \(model.routes.count) 条方案")
+            VStack(spacing:8){
+                ForEach(Array(model.routes.enumerated()),id:\.offset){i,r in routeRow(i,r)}
+            }
+            if !route.detailedGuidance{
+                Label("已取得路线轨迹，暂无分段转向指引，请按地图路线行进。",systemImage:"exclamationmark.triangle")
+                    .font(.footnote).foregroundColor(AppTheme.amber)
+            }
+            advancedCard
+        }
+    }
+    /// 方案卡：左缘一条色条对应地图上的线，主体是时长 + 补充信息，右侧勾
+    private func routeRow(_ index:Int,_ route:MotorRoute)->some View {
+        let on=model.selected==index
+        let detail=routeDetail(route)
+        let fastest=model.routes.map{$0.seconds}.min() ?? route.seconds
+        let extra=max(0,(route.seconds-fastest)/60)
+        // 只有一条路线（高德分享）时没有「选哪条」这回事，就不打推荐标
+        let recommended=model.routes.count>1 && index==fastestIndex
+        return Button{
+            withAnimation(.easeOut(duration:0.16)){model.selected=index}
+        }label:{
+            VStack(alignment:.leading,spacing:5){
+                HStack(alignment:.center,spacing:8){
+                    Text(NaviBridge.durText(route.seconds))
+                        .font(.system(size:19,weight:.semibold).monospacedDigit())
+                        .foregroundColor(AppTheme.text)
+                    if recommended{tagChip("推荐",strong:true)}
+                    else if extra>0{tagChip("+\(extra) 分",strong:false)}
+                    Spacer(minLength:0)
+                    Image(systemName:on ? "checkmark.circle.fill":"circle")
+                        .font(.system(size:20))
+                        .foregroundColor(on ? AppTheme.accent : AppTheme.stroke.opacity(0.8))
+                }
+                Text(detail)
+                    .font(.subheadline)
+                    .foregroundColor(AppTheme.sub)
+                    .lineLimit(1)
+            }
+            // 左边 8 + 色条 4 + 间距 12 = 文字从 24 起，别让大字贴着色条
+            .padding(.leading,24).padding(.trailing,14).padding(.vertical,13)
+            .frame(maxWidth:.infinity,alignment:.leading)
+            .background(RoundedRectangle(cornerRadius:16,style:.continuous).fill(on ? AppTheme.accentSoft : AppTheme.card))
+            .overlay(RoundedRectangle(cornerRadius:16,style:.continuous)
+                .strokeBorder(on ? AppTheme.accent.opacity(0.5) : Color.clear,lineWidth:1.5))
+            .overlay(alignment:.leading){
+                Capsule()
+                    .fill(on ? AppTheme.accent : AppTheme.stroke.opacity(0.42))
+                    .frame(width:4)
+                    .padding(.vertical,12)
+                    .padding(.leading,8)
+            }
+            .contentShape(RoundedRectangle(cornerRadius:16,style:.continuous))
+        }.buttonStyle(.plain)
+        .accessibilityLabel("\(NaviBridge.durText(route.seconds))，\(detail)")
+        .accessibilityAddTraits(on ? [.isSelected] : [])
+    }
+    /// 用时最短那一条的下标（推荐标挂在它身上，不假设高德第一条一定最快）
+    private var fastestIndex:Int {
+        model.routes.enumerated().min{$0.element.seconds < $1.element.seconds}?.offset ?? 0
+    }
+    private func tagChip(_ text:String,strong:Bool)->some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundColor(strong ? AppTheme.accent : AppTheme.sub)
+            .padding(.horizontal,8).padding(.vertical,3)
+            .background(Capsule().fill(strong ? AppTheme.accentSoft : AppTheme.secondaryFill.opacity(0.75)))
+    }
+    /// 距离 + 主要经过的道路（最多两条），比单给公里数更有判断价值
+    private func routeDetail(_ route:MotorRoute)->String {
+        let distance=NaviBridge.distText(route.totalMeters)
+        let roads=mainRoads(route)
+        return roads.isEmpty ? distance : distance+" · "+roads
+    }
+    /// 主要道路：按分段里程挑最长两条再还原行进顺序。
+    /// 不能直接取前两条——起点那几段常是几百米的小路，按顺序取会把「XX胡同」当成主干道。
+    private func mainRoads(_ route:MotorRoute)->String {
+        let named=route.steps.filter{!$0.road.isEmpty}
+        guard !named.isEmpty else{return ""}
+        var picked=Set(named.sorted{$0.distance>$1.distance}.prefix(2).map{$0.road})
+        if !named.contains(where:{picked.contains($0.road) && $0.distance>0}){
+            // 高德分享的路线没有分段里程，退回从开头几条里按顺序挑（去重后最多两条）
+            picked=Set(named.prefix(4).map{$0.road})
+        }
+        var ordered:[String]=[]
+        for step in named where picked.contains(step.road) && !ordered.contains(step.road){
+            ordered.append(step.road)
+            if ordered.count==2{break}
+        }
+        return ordered.joined(separator:" · ")
+    }
+    private var advancedCard:some View {
+        DisclosureGroup{
+            VStack(alignment:.leading,spacing:12){
+                Picker("模拟速度",selection:$simulationSpeed){ForEach(NavigationSpeed.values,id:\.self){Text("\($0) km/h").tag($0)}}
+                    .pickerStyle(.segmented)
+                GlassButton(title:"模拟导航",icon:"play.circle",style:.tinted){
+                    if let route=selectedRoute{begin(route,true)}
+                }
+            }
+            .padding(.top,12)
+        }label:{
+            Label("模拟与高级选项",systemImage:"slider.horizontal.3")
+                .font(.subheadline.weight(.semibold)).foregroundColor(AppTheme.text)
+        }
+        .tint(AppTheme.accent)
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius:18,style:.continuous).fill(AppTheme.card))
     }
     private func begin(_ route:MotorRoute,_ simulate:Bool){
         guard !NaviBridge.shared.navigating,!NaviBridge.shared.cruising,!guide.running else{model.message="请先结束当前导航或巡航";return}

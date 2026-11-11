@@ -441,6 +441,60 @@ struct MotorMap:UIViewRepresentable {
         c.overview=overview
     }
 }
+/// 规划页的多方案预览：所有方案一次画全，选中的那条垫底边压在最上层。
+/// 和 MotorMap 的分工：MotorMap 跟车走（导航中用），这里只在选方案时看全貌、不可拖动。
+/// 起点、途经点、终点都从方案的 request 取，所以调用方只需要给方案和选中项。
+struct MotorRoutesMap:UIViewRepresentable{
+    let routes:[MotorRoute];let selected:Int
+    final class Coordinator{let delegate=RouteMapDelegate();var key=""}
+    func makeCoordinator()->Coordinator{Coordinator()}
+    func makeUIView(context:Context)->MAMapView{
+        let map=MAMapView(frame:.zero)
+        map.mapType=Settings.shared.paletteNight ? .standardNight:.standard
+        map.delegate=context.coordinator.delegate.asDelegate
+        map.showsCompass=false;map.showsScale=false
+        // 嵌在上下滑的页面里，只做预览：禁掉手势，免得和 ScrollView 抢
+        map.isScrollEnabled=false;map.isZoomEnabled=false
+        map.isRotateEnabled=false;map.isRotateCameraEnabled=false
+        return map
+    }
+    func updateUIView(_ map:MAMapView,context:Context){
+        let c=context.coordinator
+        let type:MAMapType=Settings.shared.paletteNight ? .standardNight:.standard
+        if map.mapType != type{map.mapType=type}
+        let key=routes.map{"\($0.id.uuidString):\($0.points.count)"}.joined(separator:",")+"|\(selected)"
+        if c.key==key{return}
+        c.key=key
+        if let old=map.overlays{map.removeOverlays(old)}
+        if let old=map.annotations{map.removeAnnotations(old.filter{!($0 is MAUserLocation)})}
+        var lines:[MAPolyline]=[]
+        func add(_ points:[MotorPoint],_ kind:String){
+            guard points.count>1 else{return}
+            var coords=points.map{CLLocationCoordinate2D(latitude:$0.lat,longitude:$0.lng)}
+            if let line=MAPolyline(coordinates:&coords,count:UInt(coords.count)){line.title=kind;lines.append(line)}
+        }
+        for (i,r) in routes.enumerated() where i != selected{add(r.points,"alt")}
+        if routes.indices.contains(selected){
+            add(routes[selected].points,"selCasing")
+            add(routes[selected].points,"sel")
+        }
+        if !lines.isEmpty{
+            map.addOverlays(lines)
+            map.showOverlays(lines,edgePadding:UIEdgeInsets(top:36,left:28,bottom:36,right:28),animated:false)
+        }
+        guard let plan=routes.first else{return}
+        // 同一次算路的方案共用一个请求，起终点和途经点取第一条的就行
+        let marks=[plan.request.start]+plan.request.vias+[plan.request.end]
+        var pins:[MAPointAnnotation]=[]
+        for (i,p) in marks.enumerated(){
+            let a=MAPointAnnotation()
+            a.coordinate=CLLocationCoordinate2D(latitude:p.lat,longitude:p.lng)
+            a.title=i==0 ? "起点":(i==marks.count-1 ? "目的地":"途经 \(i)")
+            pins.append(a)
+        }
+        map.addAnnotations(pins)
+    }
+}
 struct WebMotorView: View {
     @ObservedObject var guide=WebMotorSession.shared
     var initialDestination: SearchService.Place?

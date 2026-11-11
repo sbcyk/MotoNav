@@ -4,9 +4,11 @@ import ObjectiveC
 
 /// 版本：跟随 App 版本（见 Config.swift，iOS v0.3 新增）
 ///
-/// 选路线时的小地图预览（高德地图，夜间样式）：
-/// 选中的路线粉色粗线、其他路线灰色、导入的高德分享原路线橙色虚线，自动缩放到能看全所有路线。
+/// 选路线时的小地图预览（高德地图，跟随深浅色）：
+/// 选中的路线系统蓝粗线、其他路线灰色、导入的高德分享原路线橙色虚线，自动缩放到能看全所有路线；
+/// 规划页的多方案视图（MotorRoutesMap）还会在选中线下面再垫一层对比底边。
 /// iOS v0.4：目的地红色大头针、途经点紫色大头针。iOS v0.5.2：地图跟着夜间配色切换白天 / 夜间样式。
+/// 起点用绿色大头针，和目的地、途经点区分开。
 /// 放在可以上下滑的主界面里，所以地图本身不能拖动，只用来看。
 struct RouteMapView: UIViewRepresentable {
     let routes: [NaviBridge.RouteOption]
@@ -64,7 +66,7 @@ struct RouteMapView: UIViewRepresentable {
     }
 }
 
-/// 地图回调：决定每条线画成什么样。和 NaviBridge 一样在运行时登记协议（见 CLAUDE.md 高德坑第 1 条）
+/// 地图回调：决定每条线画成什么样。高德 delegate 是 @objc 协议，和 NaviBridge 一样在运行时用 class_addProtocol 登记才接得上。
 final class RouteMapDelegate: NSObject {
     var key = ""
 
@@ -73,14 +75,15 @@ final class RouteMapDelegate: NSObject {
         return (self as AnyObject) as? MAMapViewDelegate
     }
 
-    /// 大头针：目的地红色、途经点紫色；自己的位置用地图默认的蓝点
+    /// 大头针：起点绿、目的地红、途经点紫；自己的位置用地图默认的蓝点
     @objc(mapView:viewForAnnotation:)
     func annotationView(_ m: MAMapView, annotation: MAAnnotation) -> MAAnnotationView? {
         guard let a = annotation as? MAPointAnnotation else { return nil }
         let id = "pin"
         let v = (m.dequeueReusableAnnotationView(withIdentifier: id) as? MAPinAnnotationView) ?? MAPinAnnotationView(annotation: a, reuseIdentifier: id)
         v?.annotation = a
-        v?.pinColor = a.title == "目的地" ? .red : .purple
+        // 标题是 ObjC 的可选字符串，用三元而不是 switch，避免 Optional 模式匹配的类型问题
+        v?.pinColor = a.title == "目的地" ? .red : (a.title == "起点" ? .green : .purple)
         v?.canShowCallout = false
         return v
     }
@@ -91,16 +94,23 @@ final class RouteMapDelegate: NSObject {
         r.lineJoinType = kMALineJoinRound
         r.lineCapType = kMALineCapRound
         switch pl.title {
-        case "sel":
-            r.strokeColor = UIColor(red: 1, green: 0.31, blue: 0.71, alpha: 1)
-            r.lineWidth = 8
+        case "selCasing":     // 选中路线先垫一层对比底边，压在底图上不糊
+            r.strokeColor = UIColor { $0.userInterfaceStyle == .dark
+                ? UIColor(white: 0, alpha: 0.62) : UIColor(white: 1, alpha: 0.95) }
+            r.lineWidth = 12
+        case "sel":           // 选中：系统蓝，值同 AppTheme.accent（UIKit 渲染层只能用 UIColor，改主题色时这里跟着改）
+            r.strokeColor = UIColor { $0.userInterfaceStyle == .dark
+                ? UIColor(red: 0.039, green: 0.518, blue: 1, alpha: 1)
+                : UIColor(red: 0.000, green: 0.478, blue: 1, alpha: 1) }
+            r.lineWidth = 7   // 导航页 MotorMap 与规划页 MotorRoutesMap 共用这条样式
         case "ghost":
             r.strokeColor = UIColor(red: 1, green: 0.62, blue: 0.15, alpha: 0.95)
             r.lineWidth = 4
             r.lineDashType = kMALineDashTypeSquare
-        default:
-            r.strokeColor = UIColor(white: 0.6, alpha: 0.7)
-            r.lineWidth = 6
+        default:              // 其他方案：细灰线，看得见又不抢主角
+            r.strokeColor = UIColor { $0.userInterfaceStyle == .dark
+                ? UIColor(white: 0.74, alpha: 0.58) : UIColor(white: 0.42, alpha: 0.52) }
+            r.lineWidth = 5
         }
         return r
     }
