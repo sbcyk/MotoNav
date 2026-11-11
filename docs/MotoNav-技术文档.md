@@ -2,6 +2,8 @@
 
 > 手机 + 微雪 ESP32-S3-Touch-AMOLED-1.75 圆屏的摩托车导航方案
 > 文档版本：2026-11-02 ｜ 对应上游 commit `e1225162`（2026-11-01）｜ 固件 `7.12.10-phone.8`
+>
+> **本文是 2026-11-02 对照上游源码做的分析记录。** 此后本仓库已移除 `android/`、版本线改为自建（`fw-*` / `ios-*`），文中"当前 / 现状"一类表述均指当时；协议、时序、地图管线部分仍然适用。
 
 ---
 
@@ -23,10 +25,10 @@
 
 | 项目 | 现状 | 说明 |
 | --- | --- | --- |
-| 你的 fork | **纯镜像，0 个自有提交** | `sbcyk/MotoNav` 的 `main` = `e1225162`，与上游 HEAD 完全一致；仓库 2026-11-02 创建，只有 `main` 一个分支 |
+| 你的 fork | **自己的开发主线** | `sbcyk/MotoNav` 的 `main` 已脱离上游，有独立提交线与 `fw-*` / `ios-*` tag；安卓端已移除，只维护 iOS + 固件 |
 | 本地固件包 | pages.4（旧）+ **phone.8（已下载，2026-11-02）** | pages.4 落后 3 次迭代；phone.8 已存 `latest-2026.11.01-r2\`，两层 SHA256 均校验通过（详见 §10.4） |
 | 固件完整性 | **校验通过** | pages.4 与 phone.8 的 bin SHA256 都与各自 manifest 逐字节一致（详见 §10、§10.4） |
-| 手机端 | 安卓只有源码；**iOS IPA 已下载** | 安卓无预签名 APK，需自建；iOS `0.16.2 Build16` 未签名 IPA 已存本地，需自签安装（详见 §12） |
+| 手机端 | **只做 iOS** | 安卓源码已移除；iOS 出包走 GitHub Actions（`ios-quick`），产物自签安装（详见 §12） |
 | 手机设备 | iPhone 16 Pro / iOS 27 | 可侧载，方案见 §12；**但 iOS 版没有红绿灯读秒**（§12.7） |
 | 动手门槛 | 中 | 要装 JDK17 / SDK35 / Gradle 8.10.2；读秒版还要 apktool + Zig + 148MB 第三方组件 |
 
@@ -424,6 +426,8 @@ RLE 数据：每字节 = 高 4 位(长度-1) + 低 4 位(颜色索引)
 
 ### 7.1 安卓两版的差异
 
+> `android/` 已从仓库移除，本节与 §7.2 保留作为当时的实现对照，命令和路径不再有效。
+
 | | 普通版 `android/standard` | 读秒版 `android/countdown` |
 | --- | --- | --- |
 | 版本 | 8.3.26 | 8.3.26-single.32-fresh.1（系统版本名保留兼容组件要求，App 内显示 single.32-fresh.1） |
@@ -513,35 +517,6 @@ FQBN：`esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRA
 
 注意：必须保留 `firmware/libraries/MotoNavIpcStackGuard`，脚本会显式传 `-Wl,--wrap=xTaskCreatePinnedToCore`。
 
-### 9.2 安卓普通版
-
-```powershell
-# 仓库根目录
-.\一键打包-普通版.bat
-# 或
-.\Build-Personal.ps1 -JavaPath 'D:\Tools\jdk-17' -SdkPath 'D:\Android\Sdk' -GradlePath 'D:\Tools\gradle-8.10.2\bin\gradle.bat'
-```
-
-- 环境：**JDK 17**（不要 JDK 25）、Android SDK 35、Gradle 8.10.2。
-- 产物：`output/MotoNav-personal.apk` + `output/Application-info.txt`（包名、证书 SHA1）。
-- 首次自动生成个人包名 + 本机签名，务必备份 `android/standard/personal.properties` 与 `keystore/`。
-
-### 9.3 安卓读秒版
-
-```powershell
-.\一键打包-读秒版.bat
-# 或
-python build-countdown.py --apktool 'D:\Tools\apktool.jar' --gradle 'D:\Tools\gradle-8.10.2\bin\gradle.bat' `
-  --sdk 'D:\Android\Sdk' --java-home 'D:\Tools\jdk-17' --zig 'D:\Tools\zig-0.13.0\zig.exe'
-```
-
-- 额外依赖：**apktool 2.12.1、Zig 0.13.0、Python 3**。
-- 脚本自动下载 `provider.apk`（约 148MB）到 `android/countdown/inputs/`，按 `provider.json` 校验。
-  已核对到的 SHA256：`f0fe164279a6d60bd83d926a32d47f335f044faf9c0d37564b49655e95db0141`
-  这个值来自 QQ 群说明 PDF，**与仓库 provider.json 是否一致请在构建时让脚本自己校验**——不要手填。
-- 下载失败可手动放到 `inputs/provider.apk`，或加 `--provider` 指定路径。
-- 备份项：`personal.properties` + `.local/debug.keystore`（**点号目录容易漏**）。
-
 ### 9.4 iOS
 
 ```sh
@@ -598,9 +573,7 @@ IPA 未签名，需用 Sideloadly / iLoader 自签；免费账号 7 天续签。
 | 与 iOS Build16 配对 | 可用但换图会卡 | ✅ 官方联调版本 |
 | 适用手机 | 安卓两版 | 安卓两版 + **iOS 0.16.2** |
 
-**结论**：如果你只用安卓，pages.4 完全够用；如果你要用 iPhone，或者受不了换图时的顿挫，升到 phone.8。升级走"应用升级"（0x10000）保留配对和设置。
-
-⚠️ 注意一个仓库自身的小矛盾：`android/standard/README.md` 里写"当前 1.75 通用固件为 `7.12.10-pages.5`"，而 `firmware/RELEASE_VERSION` 和主 README 都是 `7.12.10-phone.8`。**以 `RELEASE_VERSION` 和 Release 页为准**，standard 那个 README 是上一轮（10-31）没同步的残留。
+**结论**：升到 phone.8 及以上，换图不顿挫，也是与 iOS 联调过的版本。升级走"应用升级"（0x10000）保留配对和设置。
 
 ### 10.3 你的 fork 现状（2026-11-02 创建时）
 
@@ -682,13 +655,13 @@ git checkout -b feat/my-change
 ### 第二步：把 App 装到手机（半天到一天）
 
 1. 装 WorkBuddy（或自己配环境），获取仓库源码。
-2. 先打包**普通版**（步骤最少，不碰 provider.apk）：`一键打包-普通版.bat`。
-3. 拿到 `output/MotoNav-personal.apk` + `Application-info.txt`。
-4. 用 **Application-info.txt 里的包名 + 证书 SHA1**（大写十六进制、冒号分隔、20 组）申请自己的高德 Key。
-5. 手机安装 → App 内填 Key → 授权定位/蓝牙/通知 → 连接圆屏。
+2. 在改好的分支上手动跑 `iOS Quick Build (unsigned IPA)`，从 artifact 下载 IPA。
+3. 用 Sideloadly / iLoader 等工具以自己 Apple 账号签名安装（免费签名 7 天续签，详见 §12）。
+4. 在高德开放平台申请 **iOS** Key，绑定签名后的实际 Bundle ID，填在 App 设置页。
+5. 授权定位 / 蓝牙 / 通知 → 连接圆屏。
 
 **验收**：首页能定位、能规划路线、圆屏能显示地图和转向。
-**地图不出图排查顺序**：包名/SHA1 与 Key 是否匹配 → Key 平台类型 → 网络/定位权限 → 是否覆盖安装了不同签名的包。
+**地图不出图排查顺序**：Bundle ID 与 Key 是否匹配 → Key 平台类型 → 网络/定位权限 → 是否覆盖安装了不同签名的包。
 
 ### 第三步：动源码（按需）
 
@@ -696,7 +669,7 @@ git checkout -b feat/my-change
 
 | 你想做的事 | 改哪里 | 风险 |
 | --- | --- | --- |
-| 换 UI 布局/配色 | Android `NavUi.kt` / `MainActivity`；iOS `ContentView` | 低 |
+| 换 UI 布局/配色 | iOS `ContentView` | 低 |
 | 换地图源 | `MapFeeder` + `AmapCaptureHost`/`AmapShare` | 中（Key、坐标系、抓图 API 都耦合高德） |
 | 加新的屏上显示项 | 手机加 `'B'` 图栏 + 固件加 `IMG_SLOTS` | 中（栏位是硬编码的） |
 | 改地图编码/压缩 | 手机编码 + `RasterDecoder.h` 对称改 | **高**（两侧必须同时刷，无版本号兜底） |
@@ -712,7 +685,7 @@ git checkout -b feat/my-change
 
 | 问题 | 答案 |
 | --- | --- |
-| iPhone 16 Pro + iOS 27 能装吗？ | **能。** App 最低要求 iOS 15，设备与系统版本都在范围内；`0.16.2 Build16` 就是这个固件世代对应的版本 |
+| iPhone 16 Pro + iOS 27 能装吗？ | **能。** App 最低要求 iOS 15，设备与系统版本都在范围内 |
 | iLoader + SideStore 可行吗？ | **可行，这是目前最稳的免费路线**（iLoader 负责首次装机 + 配对文件，SideStore 负责日常签名与续签） |
 | 需要 LiveContainer 吗？ | **不需要，而且对这个 App 是负优化**（原因见 §12.3） |
 | 代价是什么？ | 免费 Apple ID：证书 **7 天**、同时最多 **3 个 App**（含 SideStore）、每周 **10 个新 App ID**；到期不续签就打不开 |
@@ -919,8 +892,7 @@ git checkout -b feat/my-change
 | iOS 实机行为 | 无 Apple 设备验证 | 只在需要 iOS 时再投入 |
 | pages.4 → phone.8 升级后的实际差异 | 仅有官方文字描述 | 可先备份 NVS（包内有 `备份原厂.bat`）再升级 |
 | 1.85B 板型 | 仓库有源码目录，固件停在 7.12.3-185B | 不打算用就不用管，**千万别混刷** |
-| `provider.apk` SHA256 与仓库 `provider.json` 是否一致 | PDF 里的值与仓库文件我未逐一比对 | 让构建脚本自己校验，别手填 |
 
 ---
 
-*本文档基于 2026-11-02 的仓库状态与本地材料编写。上游更新频繁（近两周有 10+ 次提交），引用具体行号或常量前建议先核对当前 HEAD。*
+*本文档基于 2026-11-02 的仓库状态与本地材料编写；安卓端已于 2026-11-11 移除，凡涉及 `android/` 的命令和路径只作历史对照。引用具体行号或常量前建议先核对当前 HEAD。*

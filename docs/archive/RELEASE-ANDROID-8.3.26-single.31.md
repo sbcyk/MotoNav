@@ -25,7 +25,7 @@
 
 继续使用根目录 `一键打包-读秒版.bat`、`Build-Countdown.ps1` 或 `android/countdown/build-countdown.py`。脚本自动获取并校验已固定的 `provider.apk`，最终成品为 `android/countdown/output/MotoNav-8.3.26-single.31-countdown.apk`；仅运行 Gradle 得到的中间 APK 不能独立替代完整成品。
 
-WorkBuddy 提示词已更新到 single.31，使用方法见 [读秒版说明](../../android/countdown/README.md)。公开完整构建保持原有包名与签名生成流程；已有用户请沿用自己的包名、签名和匹配的高德 Key。此次为维护者单独生成的新包名发布签名包、签名私钥及个人凭据不上传源码仓库，也不改变其他用户的升级身份。
+WorkBuddy 提示词已更新到 single.31，使用方法见当时的读秒版说明（`android/countdown/README.md`，已随安卓端移除）。公开完整构建保持原有包名与签名生成流程；已有用户请沿用自己的包名、签名和匹配的高德 Key。此次为维护者单独生成的新包名发布签名包、签名私钥及个人凭据不上传源码仓库，也不改变其他用户的升级身份。
 
 ## 验证范围
 

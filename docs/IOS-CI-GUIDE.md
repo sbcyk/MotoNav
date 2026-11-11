@@ -118,17 +118,3 @@ Actions → 左侧 `iOS Quick Build (unsigned IPA)` → 右侧 `Run workflow` �
 
 - public 仓库 + 标准 runner：**免费，不消耗额度**
 - 若哪天把仓库改成 private：macOS runner 按 **10 倍** 计费，免费额度 2000 分钟/月 → 实际只剩 200 分钟，跑 6~7 次就没了
-
----
-
-## 9. 和安卓的关系
-
-安卓不受这些限制，本地就能编：
-
-```powershell
-$env:JAVA_HOME='C:\tools\java\jdk\openjdk-17.0.2'
-$env:GRADLE='C:\tools\gradle\gradle-8.10.2\bin\gradle.bat'
-.\Build-Personal.ps1 -JavaPath $env:JAVA_HOME -GradlePath $env:GRADLE -SdkPath 'D:\Android\Sdk'
-```
-
-需要 Android SDK 35（不是 34/36）。`jdk-21` 和 `gradle-8.14.5` 版本不对，别用。

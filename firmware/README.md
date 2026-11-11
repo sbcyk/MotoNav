@@ -1,10 +1,10 @@
 # 1.75 圆屏固件
 
-适用于 **微雪 ESP32-S3-Touch-AMOLED-1.75**。iOS 与安卓客户端共用一份固件，不需要按手机系统分别烧录。公开源码及镜像使用通用 MotoNav / 品牌开机，不包含私人开机资源。当前版本见 `firmware/RELEASE_VERSION`，与 `src/core/FirmwareConfig.h` 的 `FW_VERSION` 同步。
+适用于 **微雪 ESP32-S3-Touch-AMOLED-1.75**。iOS 客户端直接使用这份固件，不需要按手机系统分别烧录。公开源码及镜像使用通用 MotoNav / 品牌开机，不包含私人开机资源。当前版本见 `firmware/RELEASE_VERSION`，与 `src/core/FirmwareConfig.h` 的 `FW_VERSION` 同步。
 
 ## 获取与烧录
 
-本仓库不发布预打包 ZIP，产物按文末「自行编译与打包」生成。拿到一键包后完整解压：Windows 双击 `一键烧录.bat`；macOS 双击 `一键烧录.command`，自动选择 Apple 芯片或 Intel 原生工具。两个包使用完全相同的应用及完整镜像。
+本仓库不发布预打包 ZIP，产物按文末「自行编译与打包」生成。拿到一键包后完整解压，双击 `一键烧录.bat`，按提示选自己的串口。
 
 已有同板型、同分区 MotoNav，选默认“应用升级”，写入 `0x10000`，保留配对和设置。首次安装或救砖才选完整安装，**会清空设置**。
 
@@ -18,7 +18,7 @@
 
 ## 测试
 
-生产解码器的像素/边界/进度回归和实际接收队列测试覆盖取消、重复包、会话变化与延迟确认；页面、旋转、电源和媒体测试继续运行。桌面计时不能当作圆屏帧率。Windows / macOS 一键包在 Apple 芯片与 Intel 上核对原生工具和模拟写入流程，不会在云端刷真实设备；历史构建与包校验记录见[发布存档](../docs/archive/RELEASE-IOS-FIRMWARE-2026-11-01.md)。
+生产解码器的像素/边界/进度回归和实际接收队列测试覆盖取消、重复包、会话变化与延迟确认；页面、旋转、电源和媒体测试继续运行。桌面计时不能当作圆屏帧率。打包时会跑包内校验 `firmware/tests/verify_windows_package.py`，只核对文件与清单，不访问串口、不写设备；历史构建与包校验记录见[发布存档](../docs/archive/RELEASE-IOS-FIRMWARE-2026-11-01.md)。
 
 ## 自行编译与打包
 
@@ -30,10 +30,10 @@ python3 firmware/build.py
 
 Windows：`firmware/build.ps1 -Board 175`。输出 `firmware/dist/175/panel0`。
 
-生成一键包还要 esptool 工具目录：
+生成一键包还要 esptool 工具目录（`esptool.exe` 与官方说明）：
 
 ```sh
-python3 firmware/package_flasher.py --tools-dir <Windows esptool 目录> --mac-tools-dir <mac 工具目录>
+python3 firmware/package_flasher.py --tools-dir <Windows esptool 目录>
 ```
 
 产物在 `output/firmware/<版本>/`，运行 `--help` 看全部参数。用一键包的人不需要另装 Arduino、Python 或 Xcode。

@@ -8,6 +8,7 @@
 
 - [INSTALL-BEGINNER.md](INSTALL-BEGINNER.md)
 - [INSTALL-IOS.md](INSTALL-IOS.md)
+- [PARITY-0.14.0.md](PARITY-0.14.0.md)
 - [MotoNav-Android-WorkBuddy-Guide.pdf](MotoNav-Android-WorkBuddy-Guide.pdf)
 - [RELEASE-2026-10-25.md](RELEASE-2026-10-25.md)
 - [RELEASE-2026-10-27.md](RELEASE-2026-10-27.md)

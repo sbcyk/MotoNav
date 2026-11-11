@@ -17,13 +17,13 @@
 | 许可证 | 非商业，见 `LICENSE.md` |
 | 提交身份 | **仅本仓库 local 配置**：`sbcyk <126747153+sbcyk@users.noreply.github.com>`，全局配置仍是公司邮箱，不要改全局 |
 
-仓库规模（`git ls-files` 实测）：`firmware/` 790 个文件，`android/` 307，`ios/` 129，`docs/` 51，合计 1294。
+仓库规模（`git ls-files` 实测）：`firmware/` 785 个文件，`ios/` 129，`docs/` 53，合计 990。
 
 ### 工作范围：只做 iOS 端
 
-手机端**只用 iOS**，`ios/` 是唯一要维护的客户端，`android/` 保留但不改动（不删、不编、不参考其新特性）。看到 `android/` 里的实现差异时，不要当成"需要同步修复的问题"。
+手机端**只有 iOS**，`ios/` 是唯一维护的客户端；安卓源码已于 2026-11-11 移除，仓库里不再有安卓工程。
 
-两端共享的是 BLE 协议：改协议字段必须同时改 `firmware/` 和 `ios/`，`android/` 跟着上游走即可。
+两端共享的是 BLE 协议：改协议字段必须同时改 `firmware/` 和 `ios/`。
 
 ### 版本号：语义化版本，不跟上游走
 
@@ -46,7 +46,6 @@
 | `firmware/boards/175/MotoNav/src/core/FirmwareConfig.h` | `FW_VERSION`，编译进固件 | 屏幕上显示旧版 |
 | `firmware/RELEASE_VERSION` | 打包脚本读它，**强校验必须等于 FW_VERSION** | `package_flasher.py` 直接报 `Source/version mismatch` |
 | `firmware/windows-flasher/flash.ps1` | 第 46 行版本比对、第 52 行标题 | 生成的一键包运行时 `throw '固件清单版本不匹配'` |
-| `firmware/macos-flasher/一键烧录.command` | 第 8 行 `task_version` | 打 mac 包时报 `Stale Mac version` |
 | `firmware/windows-flasher/使用说明.txt` | 首行不再写版本号（版本看包名与清单） | 无 |
 
 验证方式：跑一次 `python package_flasher.py --tools-dir <含 esptool.exe 的目录>`，它内部会校验版本一致性、镜像格式、清单哈希，全过才算干净。产物在 `output/firmware/<版本>/`，用完可以删。
@@ -115,7 +114,6 @@ firmware/
 │   ├── SensorLib
 │   └── MotoNavIpcStackGuard    链接期兜底，必须保留
 ├── windows-flasher/            Windows 一键烧录包生成器
-├── macos-flasher/
 ├── tests/
 └── boards/175/MotoNav/
     ├── MotoNav.ino             入口 + 主循环调度
@@ -329,18 +327,6 @@ esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRAM=opi,CD
 - `max_app_32MB.csv`（单槽 31.87MB，无 OTA、无文件系统）存在于 `tools/partitions/`，但不是菜单项，要使用需自定义分区表。
 
 `build.py` 会从 `src/core/FirmwareConfig.h` 里正则抓 `#define FW_VERSION "v..."` 当版本号，格式必须带 `v` 前缀。链接参数 `-Wl,--wrap=xTaskCreatePinnedToCore` 来自 `MotoNavIpcStackGuard`，删了这个库会丢掉 IPC 栈越界的修复，表现为蓝牙初始化时反复重启。
-
-### 安卓（不在维护范围）
-
-只做 iOS 端，下面命令仅作参考，不主动编译或修改。
-
-```powershell
-$env:JAVA_HOME='C:\tools\java\jdk\openjdk-17.0.2'
-$env:GRADLE='C:\tools\gradle\gradle-8.10.2\bin\gradle.bat'
-.\Build-Personal.ps1 -JavaPath $env:JAVA_HOME -GradlePath $env:GRADLE -SdkPath 'D:\Android\Sdk'
-```
-
-两个环境已就位：Gradle 8.10.2、OpenJDK 17.0.2。还需要 Android SDK 35。首次构建会生成个人包名和本机签名，务必备份 `android/standard/personal.properties` 和 `keystore/`。
 
 ### iOS
 
