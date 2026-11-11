@@ -117,7 +117,7 @@ struct IndependentPlannerView:View {
                 waitingForInitialFix=false
                 if pick==0{model.start=point}else{model.end=point}
                 // 已经有方案时改了起终点，旧方案作废：明确提示要重算，别让人以为还在看旧的三条
-                let planned=!model.routes.isEmpty
+                let planned = !model.routes.isEmpty
                 model.invalidate()
                 if planned{model.message="起终点已改动，点「规划摩托车路线」重新算路"}
                 pick=nil
@@ -125,7 +125,7 @@ struct IndependentPlannerView:View {
         }
         .sheet(isPresented:$waypoints){RouteWaypointEditor(points:model.vias,near:model.start){points in
             waitingForInitialFix=false
-            let planned=!model.routes.isEmpty
+            let planned = !model.routes.isEmpty
             model.vias=points;model.invalidate()
             if planned{model.message="途经点已改动，点「规划摩托车路线」重新算路"}
         }}
