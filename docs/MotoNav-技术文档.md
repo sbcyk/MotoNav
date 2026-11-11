@@ -602,18 +602,18 @@ IPA 未签名，需用 Sideloadly / iLoader 自签；免费账号 7 天续签。
 
 ⚠️ 注意一个仓库自身的小矛盾：`android/standard/README.md` 里写"当前 1.75 通用固件为 `7.12.10-pages.5`"，而 `firmware/RELEASE_VERSION` 和主 README 都是 `7.12.10-phone.8`。**以 `RELEASE_VERSION` 和 Release 页为准**，standard 那个 README 是上一轮（10-31）没同步的残留。
 
-### 10.3 你的 fork 现状
+### 10.3 你的 fork 现状（2026-11-02 创建时）
 
 ```
 sbcyk/MotoNav
-├── fork: true, parent: zyn950929/MotoNav
+├── fork: true, parent: CharlesXu/MotoNav
 ├── created: 2026-11-02T05:51:32Z
 ├── pushed:  2026-11-01T16:23:46Z   ← 注意：早于创建时间，说明是创建时同步的上游提交
 ├── branches: main → e12251629c
 └── 自有提交：0
 ```
 
-**这意味着**：fork 目前只是"快照备份"。要真正开始改，建议：
+以上是创建当天的快照。现在 `main` 已经是自己的开发主线，有独立的提交与 `fw-*` / `ios-*` tag，实时状态看 `git log` / `git tag -l`，不要引用本节数字。当时给的起步流程仍然适用：
 
 ```bash
 git clone https://github.com/sbcyk/MotoNav.git
@@ -653,7 +653,7 @@ git checkout main && git merge --ff-only upstream/main && git push origin main
 
 **和 pages.4 包的两处结构差异**：
 
-1. **不再附带 `firmware-verification.json`**（pages.4 里那份写了"8 次受控重启""公开镜像未刷入实物"的验证记录）。phone.8 改为包内 `SHA256SUMS.txt` 覆盖全部 12 个文件，验证结论挪到了 `docs/RELEASE-IOS-FIRMWARE-2026-11-01.md`。
+1. **不再附带 `firmware-verification.json`**（pages.4 里那份写了"8 次受控重启""公开镜像未刷入实物"的验证记录）。phone.8 改为包内 `SHA256SUMS.txt` 覆盖全部 12 个文件，验证结论挪到了 `docs/archive/RELEASE-IOS-FIRMWARE-2026-11-01.md`。
 2. `flash.ps1` 仍然把版本串硬编码为 `7.12.10-phone.8`，版本不符直接退出——防呆逻辑与上一版一致，只是常量换了一个。
 
 **IPA 内部实测**（解包读 Info.plist）：

@@ -91,7 +91,7 @@ def main():
     files=[]
     for name in ['firmware/boards/175','firmware/libraries','firmware/tests','firmware/windows-flasher','firmware/macos-flasher','licenses']:
         files.extend(p for p in (REPO/name).rglob('*') if p.is_file() and not any(x in p.parts for x in ['__pycache__','.build','build']) and p.suffix not in ['.pyc','.exe','.pdb'])
-    files.extend(REPO/name for name in ['.gitattributes','LICENSE.md','firmware/README.md','firmware/RELEASE_VERSION','firmware/build.py','firmware/build.ps1','firmware/package_flasher.py','docs/RELEASE-IOS-FIRMWARE-2026-11-01.md','docs/VERIFY-IOS-FIRMWARE-2026-11-01.json'])
+    files.extend(REPO/name for name in ['.gitattributes','LICENSE.md','firmware/README.md','firmware/RELEASE_VERSION','firmware/build.py','firmware/build.ps1','firmware/package_flasher.py','docs/archive/RELEASE-IOS-FIRMWARE-2026-11-01.md','docs/archive/VERIFY-IOS-FIRMWARE-2026-11-01.json'])
     with zipfile.ZipFile(source_zip,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         for p in sorted(set(files)):
             require('rebelboot' not in p.name.lower(),'Private source asset found')

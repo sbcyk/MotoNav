@@ -27,5 +27,5 @@
   "credentialsIncluded": false,
   "signingFilesIncluded": false,
   "privateLogsIncluded": false,
-  "verification": "docs/VERIFY-IOS-FIRMWARE-2026-11-01.json"
+  "verification": "docs/archive/VERIFY-IOS-FIRMWARE-2026-11-01.json"
 }

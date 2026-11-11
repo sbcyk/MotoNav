@@ -47,11 +47,11 @@
 | `firmware/RELEASE_VERSION` | 打包脚本读它，**强校验必须等于 FW_VERSION** | `package_flasher.py` 直接报 `Source/version mismatch` |
 | `firmware/windows-flasher/flash.ps1` | 第 46 行版本比对、第 52 行标题 | 生成的一键包运行时 `throw '固件清单版本不匹配'` |
 | `firmware/macos-flasher/一键烧录.command` | 第 8 行 `task_version` | 打 mac 包时报 `Stale Mac version` |
-| `firmware/windows-flasher/使用说明.txt` | 首行标题 | 只是文本过时，功能不受影响 |
+| `firmware/windows-flasher/使用说明.txt` | 首行不再写版本号（版本看包名与清单） | 无 |
 
 验证方式：跑一次 `python package_flasher.py --tools-dir <含 esptool.exe 的目录>`，它内部会校验版本一致性、镜像格式、清单哈希，全过才算干净。产物在 `output/firmware/<版本>/`，用完可以删。
 
-`firmware/README.md`、`firmware/MAC_PACKAGE.json`、`docs/README.md`、`docs/RELEASE-IOS-FIRMWARE-2026-11-01.md` 里仍写着 `7.12.10-phone.8`，这些是**上游发布说明**，描述的是上游的 release 附件和下载链接，不随本仓库版本号变，不要顺手改。
+`firmware/MAC_PACKAGE.json` 记的是上游 11-01 发布的 macOS 一键包（tag、文件名、sha256），只有 `release-firmware.yml` 的 mac 冒烟任务会读它；`docs/archive/RELEASE-*.md` 是当时的发布存档，里面仍是上游口径的版本号和下载页。这些是跟原文对照的记录，不要顺手改成当前版本号。
 
 ### tag 规范
 
@@ -429,7 +429,7 @@ iOS 出包：`Run workflow` → 选分支（build 号由 run 号自动生成，�
 | `scripts/home_sprites.py` | 生成主页两态画面 `resources/HomeSprites.h`（8bpp 233×233，两态共用一张 256 色调色板）。参考图都在 `assets/reference/`：<br>· `home-v3-standing.png` 已连接态：站姿牵马，黄金树、王城、峡谷一起入画<br>· `home-v3-seated.png` 未连接态：与前者同源生成，只把人改成独坐、马去掉<br>脚本以母版为底，只把「人马矩形」和「赐福柱带」两块换成另一张图的像素（矩形 + 高斯羽化），区外逐像素复制母版；两态共用一张调色板 + 同一个 Bayer 抖动场（偏移只跟坐标有关，同一坐标同色必得同一索引），最后校验“两区之外失配 = 0”，不为 0 直接报错。`HOME_BEAM_*` 锚点与 `HOME_MAN_*` / `HOME_HRS_*` 两块矩形也由它写出；锚点 x 取“画面下部暖色行数最多的那一列”，y 取 `main()` 里传的基线常数（当前 204）——换参考图或改取景框后要重新量基线，对不上脚本会报错而不是静默跑偏。旧的 `home-standing*.png` / `home-seated.png` / `home-dual-pose.png` 已不引用，留作备选 |
 | `scripts/home_preview.py` | PC 端预览主页画面，输出 `scripts/preview/*.png`，需 Pillow |
 | `.github/workflows/ios-quick.yml` | 精简工作流，8~15 分钟出 unsigned IPA |
-| `firmware/README.md` | 上游固件说明（描述上游 `7.12.10-phone.8`，不随本仓库版本变） |
-| `docs/RELEASE-IOS-FIRMWARE-2026-11-01.md` | 上游 `phone.8` 发布说明 |
+| `firmware/README.md` | 固件编译、打包与烧录说明（版本读 `RELEASE_VERSION`） |
+| `docs/archive/RELEASE-IOS-FIRMWARE-2026-11-01.md` | 2026-11-01 发布存档（上游 `phone.8` 口径） |
 
 仓库外、仅本机存在的：`..\builds\<日期>-<分支>\`（每次出包归档的 bin + SHA256）、`..\arduino-setup\`（工具链安装缓存）、`..\latest-2026.11.01-r2\`（上游下载包）。这些不进 git，换机器要自带。
