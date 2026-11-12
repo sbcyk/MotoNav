@@ -1042,15 +1042,16 @@ struct ContentView: View {
     /// 屏幕显示按功能拆卡：导航信息 / 地图与路线 / 夜间与弯道。
     private var displayCard: some View {
         VStack(spacing: 16) {
-            appearanceCard
+            themePackCard
             navigationInfoCard
             mapDisplayCard
             nightCurveCard
         }
     }
 
-    /// 主题包：换包会连强调色和地图风格一起换，所以放在圆屏显示的最前面
-    private var appearanceCard: some View {
+    /// 主题包：换包会连强调色和地图风格一起换，所以放在圆屏显示的最前面。
+    /// 名字不能叫 appearanceCard——外观（浅色/深色）那张卡已经占了。
+    private var themePackCard: some View {
         CardView {
             Text("主题包").font(.headline).foregroundColor(AppTheme.text)
             Picker("主题包", selection: $settings.appearance) {
