@@ -112,16 +112,50 @@ struct RideHistoryView:View {
     @ObservedObject var recorder=RideRecorder.shared
     @Environment(\.dismiss) private var dismiss
     var body:some View {
-        List {
-            if let active=recorder.active {Text("记录中 · \(active.mode) · \(Int(active.meters)) 米")}
-            if !recorder.error.isEmpty {Text(ContentView.userMessage(recorder.error)).foregroundColor(AppTheme.red)}
-            ForEach(recorder.rides){ride in
-                NavigationLink(destination:RideDetailView(ride:ride)){RideListRow(ride:ride)}
+        VStack(spacing: 0) {
+            SheetHeader(title: "导航轨迹",
+                        subtitle: recorder.rides.isEmpty ? "真实导航或巡航开始时自动记录" : "\(recorder.rides.count) 条记录",
+                        onClose: { dismiss() })
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    if let active=recorder.active {
+                        Label("记录中 · \(active.mode) · \(Int(active.meters)) 米", systemImage: "record.circle")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(AppTheme.green)
+                            .padding(14)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 16).fill(AppTheme.card))
+                    }
+                    if !recorder.error.isEmpty {
+                        Label(ContentView.userMessage(recorder.error), systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundColor(AppTheme.red)
+                    }
+                    ForEach(recorder.rides){ ride in
+                        NavigationLink(destination: RideDetailView(ride:ride)) {
+                            RideListRow(ride:ride)
+                                .padding(14)
+                                .background(RoundedRectangle(cornerRadius: 16).fill(AppTheme.card))
+                                .contentShape(RoundedRectangle(cornerRadius: 16))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if recorder.rides.isEmpty && recorder.active == nil {
+                        Label("真实导航或巡航开始时自动记录；模拟导航不记录。",
+                              systemImage: "clock.arrow.circlepath")
+                            .font(.subheadline)
+                            .foregroundColor(AppTheme.sub)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 18)
+                    }
+                }
+                .padding(16)
             }
-            if recorder.rides.isEmpty && recorder.active == nil {Text("真实导航或巡航开始时自动记录；模拟导航不记录。")}
-        }.navigationTitle("导航轨迹").toolbar {
-            ToolbarItem(placement:.cancellationAction){Button("关闭"){dismiss()}}
         }
+        .background(AppTheme.bg.ignoresSafeArea())
+        .foregroundColor(AppTheme.text)
+        .navigationBarHidden(true)
+        .background(InteractivePopEnabler())
     }
 }
 struct ExportSheet: UIViewControllerRepresentable {

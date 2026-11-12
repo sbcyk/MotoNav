@@ -62,70 +62,71 @@ final class IndependentPlanner:ObservableObject {
     }
 }
 
-struct MotorLoginView:View {
-    @StateObject private var browser=MotorBrowser()
-    let page:URL?
-    @Environment(\.dismiss) private var dismiss
-    var body:some View {
-        NavigationView{
-            VStack{
-                Text("仅在登录或验证时打开网页。登录保存在本机，正常规划可直接在 App 完成。").font(.caption).padding()
-                MotorBrowserView(browser:browser)
-                Text(ContentView.userMessage(browser.status)).font(.caption)
-            }.navigationTitle("高德登录／验证").toolbar{ToolbarItem(placement:.confirmationAction){Button("完成"){dismiss()}}}
-        }.onAppear{if let page=page{browser.web.load(URLRequest(url:page))}}
-    }
-}
-
 struct IndependentPlannerView:View {
     @StateObject private var model=IndependentPlanner()
+    @StateObject private var previewMap=RouteMapPreviewModel()
     @ObservedObject private var location=LocationService.shared
+    @ObservedObject private var favorites=Favorites.shared
     @ObservedObject var guide=WebMotorSession.shared
     @State private var pick:Int?
-    @State private var login=false
     @State private var loaded=false
     @State private var waitingForInitialFix=false
     @State private var waypoints=false
     @State private var showHistory=false
+    @State private var showMapFullscreen=false
     @State private var simulationSpeed=60
+    @State private var toast=""
+    @State private var toastIcon="checkmark.circle.fill"
+    @State private var toastToken=UUID()
     @Environment(\.dismiss) private var dismiss
     private let initialDestination: SearchService.Place?
     init(initialDestination:SearchService.Place? = nil){
         self.initialDestination=initialDestination
     }
     var body:some View {
-        NavigationView{
-            ScrollView{
-                VStack(alignment:.leading,spacing:14){
-                    header
-                    inputCard
-                    // 工具行贴着起终点卡，别被方案区挤到页面最底下
-                    toolRow
-                    if waitingForInitialFix{
-                        notice("已选择目的地，等待当前位置后自动规划…")
-                    }else if !model.message.isEmpty && !model.busy{
-                        // 规划中由 planningCard 显示进度，这里再说一遍就是重复
-                        notice(ContentView.userMessage(model.message))
-                    }
-                    if let route=selectedRoute{routeSection(route)}
-                    else if model.busy{planningCard}
-                    notes
+        ScrollView{
+            VStack(alignment:.leading,spacing:14){
+                header
+                inputCard
+                // 工具行贴着起终点卡，别被方案区挤到页面最底下
+                toolRow
+                if waitingForInitialFix{
+                    notice("已选择目的地，等待当前位置后自动规划…")
+                }else if !model.message.isEmpty && !model.busy{
+                    // 规划中由 planningCard 显示进度，这里再说一遍就是重复
+                    notice(ContentView.userMessage(model.message))
                 }
-                .padding(.horizontal,16)
-                .padding(.top,6)
-                .padding(.bottom,24)          // 底部留白交给 safeAreaInset 的底栏，这里只留常规间距
-                .frame(maxWidth:760,alignment:.leading)
-                .frame(maxWidth:.infinity)
+                if let route=selectedRoute{routeSection(route)}
+                else if model.busy{planningCard}
+                notes
             }
-            .safeAreaInset(edge:.bottom,spacing:0){bottomBar}
-            .background(AppTheme.bg.ignoresSafeArea())
-            .navigationTitle("").navigationBarTitleDisplayMode(.inline)
-            .toolbar{ToolbarItem(placement:.cancellationAction){Button("返回首页"){dismiss()}}}
-        }.foregroundColor(AppTheme.text).tint(AppTheme.accent)
+            .padding(.horizontal,16)
+            .padding(.top,6)
+            .padding(.bottom,24)          // 底部留白交给 safeAreaInset 的底栏，这里只留常规间距
+            .frame(maxWidth:760,alignment:.leading)
+            .frame(maxWidth:.infinity)
+        }
+        .safeAreaInset(edge:.bottom,spacing:0){bottomBar}
+        .background(AppTheme.bg.ignoresSafeArea())
+        .foregroundColor(AppTheme.text).tint(AppTheme.accent)
+        .overlay(alignment:.bottom){
+            if !toast.isEmpty {
+                ToastBanner(text:toast,icon:toastIcon)
+                    .padding(.horizontal,24)
+                    .padding(.bottom,selectedRoute == nil ? 24 : 96)
+                    .transition(.opacity.combined(with:.move(edge:.bottom)))
+            }
+        }
         .sheet(isPresented:Binding(get:{pick != nil},set:{if !$0{pick=nil}})){
             RoutePointPicker(title:pick==0 ? "选择起点":"选择目的地",near:model.start){point in
                 waitingForInitialFix=false
-                if pick==0{model.start=point}else{model.end=point}
+                if pick==0{
+                    model.start=point
+                }else{
+                    model.end=point
+                    // 这里选的目的地就是“最近目的地”的来源，别等开始导航才记
+                    History.shared.add(SearchService.Place(name:point.name,address:"",lat:point.lat,lng:point.lng))
+                }
                 // 已经有方案时改了起终点，旧方案作废：明确提示要重算，别让人以为还在看旧的三条
                 let planned = !model.routes.isEmpty
                 model.invalidate()
@@ -143,7 +144,9 @@ struct IndependentPlannerView:View {
             waitingForInitialFix=false
             model.load(entry)
         }}
-        .sheet(isPresented:$login){MotorLoginView(page:nil)}
+        .fullScreenCover(isPresented:$showMapFullscreen){
+            RouteMapFullscreen(routes:model.routes,selected:$model.selected)
+        }
         .onAppear{
             guard !loaded else{return};loaded=true
             LocationService.shared.refresh()
@@ -196,12 +199,34 @@ struct IndependentPlannerView:View {
         }
     }
     private var selectedRoute:MotorRoute?{model.routes.indices.contains(model.selected) ? model.routes[model.selected]:nil}
+    private var endFavorite:Favorites.Place? {
+        guard let end=model.end else{return nil}
+        return favorites.places.first { NaviBridge.distM($0.lat,$0.lng,end.lat,end.lng) < Favorites.samePlaceMeters }
+    }
+    private var isEndFavorited:Bool { endFavorite != nil }
     private var header:some View {
-        VStack(alignment:.leading,spacing:3){
-            Text(model.routes.isEmpty ? "摩托车路线":"选择路线")
-                .font(.system(size:28,weight:.heavy,design:.rounded))
-                .foregroundColor(AppTheme.text)
+        VStack(alignment:.leading,spacing:8){
+            HStack(alignment:.center,spacing:12){
+                Button { dismiss() } label: {
+                    Image(systemName:"chevron.left")
+                        .font(.system(size:15,weight:.bold))
+                        .foregroundColor(AppTheme.text)
+                        .frame(width:44,height:44)
+                        .background(Circle().fill(AppTheme.secondaryFill.opacity(0.8)))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("返回首页")
+                VStack(alignment:.leading,spacing:2){
+                    Text("路线规划").font(.caption.weight(.semibold)).foregroundColor(AppTheme.sub)
+                    Text(model.routes.isEmpty ? "摩托车路线":"选择路线")
+                        .font(.system(size:28,weight:.heavy,design:.rounded))
+                        .foregroundColor(AppTheme.text)
+                }
+                Spacer(minLength:8)
+            }
             Text(headerSubtitle).font(.footnote).foregroundColor(AppTheme.sub).lineLimit(2)
+                .padding(.leading,56)
         }
         .frame(maxWidth:.infinity,alignment:.leading)
     }
@@ -253,24 +278,43 @@ struct IndependentPlannerView:View {
             .contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
-    /// 途经 / 收藏 / 历史 / 登录：一行小胶囊，窄屏可以横着推
+    /// 途经 / 收藏 / 历史：一行小胶囊，窄屏可以横着推。
+    /// 高德登录入口不再放在这里：搜索和规划走自己的 Key，只有导入分享路线遇到网页验证时才需要登录。
     private var toolRow:some View {
         ScrollView(.horizontal,showsIndicators:false){
             HStack(spacing:8){
                 GlassChip(title:model.vias.isEmpty ? "途经点":"途经 \(model.vias.count)",icon:"arrow.triangle.branch",compact:true){waypoints=true}
                 if model.end != nil{
-                    GlassChip(title:"收藏目的地",icon:"star",compact:true){
+                    GlassChip(title:isEndFavorited ? "取消收藏":"收藏目的地",
+                              icon:isEndFavorited ? "star.fill":"star",
+                              tint:isEndFavorited ? AppTheme.accent:nil,
+                              compact:true){
                         guard let point=model.end else{return}
-                        Favorites.shared.add(SearchService.Place(name:point.name,address:"",lat:point.lat,lng:point.lng))
+                        let name=point.name.isEmpty ? "这个目的地":point.name
+                        if let saved=endFavorite{
+                            Favorites.shared.remove(saved)
+                            showToast("已取消收藏「\(name)」",icon:"star.slash")
+                        }else{
+                            Favorites.shared.add(SearchService.Place(name:point.name,address:"",lat:point.lat,lng:point.lng))
+                            showToast("已收藏「\(name)」")
+                        }
                     }
                 }
                 if model.start != nil{
                     GlassChip(title:"使用当前位置",icon:"location.fill",compact:true){model.start=nil;model.invalidate()}
                 }
                 GlassChip(title:"路线历史",icon:"clock.arrow.circlepath",compact:true){showHistory=true}
-                GlassChip(title:"高德登录",icon:"key.fill",compact:true){login=true}
             }
             .padding(.vertical,2)
+        }
+    }
+    private func showToast(_ text:String,icon:String="checkmark.circle.fill"){
+        toastIcon=icon
+        withAnimation(.easeOut(duration:0.18)){toast=text}
+        let token=UUID();toastToken=token
+        DispatchQueue.main.asyncAfter(deadline:.now()+2.2){
+            guard toastToken==token else{return}
+            withAnimation(.easeIn(duration:0.2)){toast=""}
         }
     }
     private var planningCard:some View {
@@ -283,7 +327,7 @@ struct IndependentPlannerView:View {
     }
     private var notes:some View {
         VStack(alignment:.leading,spacing:5){
-            Text("账号过期时，用上面的「高德登录」重新登录。")
+            Text("路线由高德网页接口规划，不需要额外登录；只有导入高德分享路线遇到网页验证时，才需要在导入页完成验证。")
             Text("锁屏前等待整条路线底图就绪；后台继续读取缓存、定位、语音和蓝牙，未缓存区域需回前台补充。")
         }.font(.caption).foregroundColor(AppTheme.sub).padding(.top,2)
     }
@@ -302,20 +346,33 @@ struct IndependentPlannerView:View {
     /// 选方案：上面一张能看全三条线的地图，下面按方案列卡片；点哪条地图就高亮哪条
     private func routeSection(_ route:MotorRoute)->some View {
         VStack(alignment:.leading,spacing:12){
-            MotorRoutesMap(routes:model.routes,selected:model.selected)
-                .frame(height:300)
-                .clipShape(RoundedRectangle(cornerRadius:22,style:.continuous))
-                .overlay(RoundedRectangle(cornerRadius:22,style:.continuous).strokeBorder(AppTheme.stroke.opacity(0.28),lineWidth:1))
-                .overlay(alignment:.topLeading){
-                    Text(model.routes.count > 1 ? "\(model.routes.count) 条方案 · 点选高亮":"高德分享路线")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(AppTheme.text)
-                        .padding(.horizontal,10).padding(.vertical,6)
-                        .liquidGlass(Capsule())
-                        .padding(12)
+            ZStack(alignment:.topTrailing) {
+                MotorRoutesMap(routes:model.routes,selected:model.selected,model:previewMap)
+                    .frame(height:300)
+                    .clipShape(RoundedRectangle(cornerRadius:22,style:.continuous))
+                    .overlay(alignment:.topLeading){
+                        Text(model.routes.count > 1 ? "\(model.routes.count) 条方案 · 点选高亮":"高德分享路线")
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(AppTheme.text)
+                            .padding(.horizontal,10).padding(.vertical,6)
+                            .liquidGlass(Capsule())
+                            .padding(12)
+                    }
+                    .overlay(RoundedRectangle(cornerRadius:22,style:.continuous).strokeBorder(AppTheme.stroke.opacity(0.28),lineWidth:1))
+                    .accessibilityElement(children:.ignore)
+                    .accessibilityLabel("路线预览，共 \(model.routes.count) 条方案，可缩放")
+
+                VStack(spacing:8){
+                    MapControlButton(icon:"plus",label:"放大"){previewMap.zoom(1)}
+                    MapControlButton(icon:"minus",label:"缩小"){previewMap.zoom(-1)}
+                    MapControlButton(icon:"scope",label:"全览路线"){previewMap.requestFit()}
+                    MapControlButton(icon:"arrow.up.left.and.arrow.down.right",label:"全屏地图"){showMapFullscreen=true}
                 }
-                .accessibilityElement(children:.ignore)
-                .accessibilityLabel("路线预览，共 \(model.routes.count) 条方案")
+                .padding(12)
+            }
+            Text("双指缩放，或用右侧按钮调整；全屏后可以拖动查看。")
+                .font(.caption2).foregroundColor(AppTheme.sub)
+                .padding(.leading,2)
             VStack(spacing:8){
                 ForEach(Array(model.routes.enumerated()),id:\.offset){i,r in routeRow(i,r)}
             }
@@ -430,6 +487,70 @@ struct IndependentPlannerView:View {
         MotorPlanHistory.shared.save(route)
         guide.start(route,simulate:simulate,simulationSpeed:simulationSpeed)
     }
+}
+
+/// 全屏路线地图：内嵌预览不能拖动（会和页面滚动抢手势），全屏后恢复拖动和双指缩放。
+struct RouteMapFullscreen: View {
+    let routes: [MotorRoute]
+    @Binding var selected: Int
+    @StateObject private var model = RouteMapPreviewModel()
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            MotorRoutesMap(routes: routes, selected: selected, model: model, interactive: true)
+                .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                SheetHeader(title: "路线全览",
+                            subtitle: "双指缩放、拖动查看；点下方方案可切换高亮",
+                            back: true,
+                            onClose: { dismiss() })
+                    .background(.ultraThinMaterial)
+
+                Spacer(minLength: 0)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(routes.enumerated()), id: \.offset) { index, route in
+                            Button {
+                                withAnimation(.easeOut(duration: 0.16)) { selected = index }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(NaviBridge.durText(route.seconds))
+                                        .font(.subheadline.weight(.bold).monospacedDigit())
+                                    Text(NaviBridge.distText(route.totalMeters))
+                                        .font(.caption2)
+                                        .opacity(0.8)
+                                }
+                                .foregroundColor(selected == index ? AppTheme.accent : AppTheme.text)
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 44)
+                                .background(Capsule().fill(selected == index ? AppTheme.accentSoft : AppTheme.card.opacity(0.92)))
+                                .overlay(Capsule().strokeBorder(selected == index ? AppTheme.accent.opacity(0.5) : .clear, lineWidth: 1))
+                                .contentShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                }
+                .background(.ultraThinMaterial)
+            }
+
+            VStack(spacing: 8) {
+                MapControlButton(icon: "plus", label: "放大", size: 44) { model.zoom(1) }
+                MapControlButton(icon: "minus", label: "缩小", size: 44) { model.zoom(-1) }
+                MapControlButton(icon: "scope", label: "全览路线", size: 44) { model.requestFit() }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+            .padding(.trailing, 16)
+        }
+        .background(AppTheme.bg)
+        .foregroundColor(AppTheme.text)
+    }
+
 }
 
 struct IndependentNavigationView: View {

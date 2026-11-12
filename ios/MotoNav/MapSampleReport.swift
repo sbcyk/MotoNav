@@ -77,39 +77,56 @@ struct MapSampleReportView:View {
     @State private var exportRequest:MapExportRequest?
     @State private var exportError:String?
     var body:some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            SheetHeader(title: "地图显示问题",
+                        subtitle: "只在本机生成对照图，不上传地图画面、坐标或 Key",
+                        onClose: { dismiss() })
             ScrollView {
-                VStack(alignment:.leading,spacing:16) {
-                    Text("地图显示问题").font(.title2.bold())
-                    Text("高速底图衔接").font(.headline)
-                    Text("模拟导航前点开始，底图空白后停止并导出。不记录地图画面、坐标或 Key，不会自动上传。")
-                        .font(.subheadline).foregroundColor(AppTheme.sub)
-                    if trace.recording {
-                        Button("停止记录"){trace.finish()}
-                    } else {Button("开始记录地图衔接"){trace.begin()}.disabled(trace.exporting)}
-                    Text(trace.status).font(.footnote).foregroundColor(AppTheme.sub)
-                    if !trace.files.isEmpty {
-                        Button("保存衔接记录到文件"){export(trace.files,to:.save)}
-                        Button("分享衔接记录"){export(trace.files,to:.share)}
-                    }
-                    Divider()
-                    Text("地图颜色与纹理").font(.headline)
-                    Text("请在网纹出现的地图区域生成对照图。它们包含地图画面，不含 Key；不会自动上传。")
-                        .font(.subheadline).foregroundColor(AppTheme.sub)
-                    Button(report.waiting ? "正在取图…":"生成新的对照图"){report.begin()}.disabled(report.waiting)
-                    Text(report.status).font(.footnote).foregroundColor(AppTheme.sub)
-                    ForEach(Array(report.files.prefix(2).enumerated()),id:\.offset){i,url in
-                        if let image=UIImage(contentsOfFile:url.path) {
-                            Text(i==0 ? "原始取图（转换前）":"转换后的基础底图（配色示意）").font(.headline)
-                            Image(uiImage:image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius:12))
+                VStack(alignment:.leading,spacing:14) {
+                    CardView {
+                        Text("高速底图衔接").font(.headline).foregroundColor(AppTheme.text)
+                        Text("模拟导航前点开始，底图空白后停止并导出。不记录地图画面、坐标或 Key，不会自动上传。")
+                            .font(.subheadline).foregroundColor(AppTheme.sub)
+                        if trace.recording {
+                            GlassButton(title: "停止记录", icon: "stop.circle", style: .tinted) { trace.finish() }
+                        } else {
+                            GlassButton(title: "开始记录地图衔接", icon: "record.circle", style: .tinted, enabled: !trace.exporting) { trace.begin() }
+                        }
+                        Text(trace.status).font(.footnote).foregroundColor(AppTheme.sub)
+                        if !trace.files.isEmpty {
+                            HStack(spacing: 10) {
+                                GlassButton(title: "保存到文件", icon: "folder", style: .tinted) { export(trace.files,to:.save) }
+                                GlassButton(title: "分享记录", icon: "square.and.arrow.up", style: .tinted) { export(trace.files,to:.share) }
+                            }
                         }
                     }
-                    if !report.files.isEmpty {Button("导出对照图和资料"){export(report.files,to:.share)}}
-                }.padding(16)
-            }.background(AppTheme.bg).foregroundColor(AppTheme.text)
-                .navigationTitle("地图显示问题").navigationBarTitleDisplayMode(.inline)
-                .toolbar{ToolbarItem(placement:.confirmationAction){Button("完成"){dismiss()}}}
-        }.sheet(item:$exportRequest){request in
+
+                    CardView {
+                        Text("地图颜色与纹理").font(.headline).foregroundColor(AppTheme.text)
+                        Text("请在网纹出现的地图区域生成对照图。它们包含地图画面，不含 Key；不会自动上传。")
+                            .font(.subheadline).foregroundColor(AppTheme.sub)
+                        GlassButton(title: report.waiting ? "正在取图…" : "生成新的对照图",
+                                    icon: "photo.on.rectangle",
+                                    style: .tinted,
+                                    enabled: !report.waiting) { report.begin() }
+                        Text(report.status).font(.footnote).foregroundColor(AppTheme.sub)
+                        ForEach(Array(report.files.prefix(2).enumerated()),id:\.offset){i,url in
+                            if let image=UIImage(contentsOfFile:url.path) {
+                                Text(i==0 ? "原始取图（转换前）":"转换后的基础底图（配色示意）").font(.headline)
+                                Image(uiImage:image).resizable().scaledToFit().clipShape(RoundedRectangle(cornerRadius:12))
+                            }
+                        }
+                        if !report.files.isEmpty {
+                            GlassButton(title: "导出对照图和资料", icon: "square.and.arrow.up", style: .tinted) { export(report.files,to:.share) }
+                        }
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .background(AppTheme.bg.ignoresSafeArea())
+        .foregroundColor(AppTheme.text)
+        .sheet(item:$exportRequest){request in
             MapReportExportSheet(request:request){exportRequest=nil}
         }.alert("无法导出",isPresented:Binding(get:{exportError != nil},set:{if !$0 {exportError=nil}})) {
             Button("确定",role:.cancel){exportError=nil}

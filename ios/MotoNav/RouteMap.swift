@@ -5,7 +5,7 @@ import ObjectiveC
 /// 版本：跟随 App 版本（见 Config.swift，iOS v0.3 新增）
 ///
 /// 选路线时的小地图预览（高德地图，跟随深浅色）：
-/// 选中的路线系统蓝粗线、其他路线灰色、导入的高德分享原路线橙色虚线，自动缩放到能看全所有路线；
+/// 选中的路线用主题包强调色粗线、其他路线灰色、导入的高德分享原路线橙色虚线，自动缩放到能看全所有路线；
 /// 规划页的多方案视图（MotorRoutesMap）还会在选中线下面再垫一层对比底边。
 /// iOS v0.4：目的地红色大头针、途经点紫色大头针。iOS v0.5.2：地图跟着夜间配色切换白天 / 夜间样式。
 /// 起点用绿色大头针，和目的地、途经点区分开。
@@ -98,10 +98,12 @@ final class RouteMapDelegate: NSObject {
             r.strokeColor = UIColor { $0.userInterfaceStyle == .dark
                 ? UIColor(white: 0, alpha: 0.62) : UIColor(white: 1, alpha: 0.95) }
             r.lineWidth = 12
-        case "sel":           // 选中：系统蓝，值同 AppTheme.accent（UIKit 渲染层只能用 UIColor，改主题色时这里跟着改）
-            r.strokeColor = UIColor { $0.userInterfaceStyle == .dark
-                ? UIColor(red: 0.039, green: 0.518, blue: 1, alpha: 1)
-                : UIColor(red: 0.000, green: 0.478, blue: 1, alpha: 1) }
+        case "sel":           // 选中：跟当前主题包强调色（艾尔登暖金 / 苔林绿），和方案卡左缘色条、按钮保持一致
+            let pack = ThemePack(rawValue: Settings.shared.appearance) ?? .elden
+            let accent = pack.accent
+            r.strokeColor = UIColor { traits in
+                UIColor(hex: traits.userInterfaceStyle == .dark ? accent.dark : accent.light)
+            }
             r.lineWidth = 7   // 导航页 MotorMap 与规划页 MotorRoutesMap 共用这条样式
         case "ghost":
             r.strokeColor = UIColor(red: 1, green: 0.62, blue: 0.15, alpha: 0.95)

@@ -5,7 +5,7 @@ import UIKit
 /// 版本：跟随 App 版本（见 Config.swift）
 ///
 /// 主界面：圆屏连接状态、搜索目的地 / 导入高德分享路线、选路线、开始导航、巡航、屏幕显示 / 屏幕设置、密钥设置
-/// 0.16.0 UI alignment: four tabs, semantic colours, device card and grouped settings.
+/// 三栏：导航（含轨迹概览）/ 设备 / 我的。
 struct ContentView: View {
     @ObservedObject var ble = BleLink.shared
     @ObservedObject var navi = NaviBridge.shared
@@ -21,6 +21,7 @@ struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var uiStarted=false
     @AppStorage("ui_selected_tab") private var page = 0
+    @AppStorage("ui_tab_scheme") private var tabScheme = 0     // 布局版本：2 起为三栏（轨迹并入导航）
     @State private var showWebMotor = false
     @State private var independentDestination: SearchService.Place?
     @State private var showRides = false
@@ -113,6 +114,7 @@ struct ContentView: View {
                 uiStarted=true
                 if !settings.keysMissing && !ble.isReady && ble.bluetoothAvailable {connectAnim.connectAutomatically()}
             }
+            normalizeTabSelection()
             if !ContentView.keyPrompted && settings.keysMissing {
                 // iOS v0.7 起开 App 提醒一次；v1.0 起不再弹填写页，直接切到密钥卡片
                 ContentView.keyPrompted = true
@@ -127,7 +129,7 @@ struct ContentView: View {
         }
         .onChange(of: page) { now in
             // 没退「通用」就直接点了别的 tab：清掉待推项，否则下次回到「我的」会被再推一次
-            if now != 3 { settingsPush = nil }
+            if now != 2 { settingsPush = nil }
             // 换页就把搜索浮层收掉，别让它盖在新页面上
             closeSearch()
         }
@@ -145,36 +147,91 @@ struct ContentView: View {
     private var activeNavigationBanner: some View {
         Group {
             if navi.navigating || independent.running {
-                HStack {
+                HStack(spacing: 12) {
                     VStack(alignment:.leading,spacing:3) {
                         Text("导航继续运行中").bold()
                         Text(independent.running ? independent.instruction : "\(navi.uiDir) · \(navi.uiDist) 米")
                             .font(.caption).lineLimit(1)
                     }
-                    Spacer()
+                    Spacer(minLength: 8)
                     Button("回到导航") {
                         if independent.running { showWebMotor=true } else { showNavi=true }
-                    }.foregroundColor(Self.pink)
-                }.padding(12).background(Self.card).foregroundColor(AppTheme.text)
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(Self.pink)
+                    .frame(minHeight: 44)
+                }
+                .padding(.horizontal,14).padding(.vertical,10)
+                .background(RoundedRectangle(cornerRadius:16).fill(Self.card))
+                .overlay(RoundedRectangle(cornerRadius:16).strokeBorder(AppTheme.stroke.opacity(0.28),lineWidth:1))
+                .padding(.horizontal,16).padding(.top,8)
+                .foregroundColor(AppTheme.text)
             }
         }
     }
 
     private var screenPicker:some View {
-        NavigationView {
-            List {
-                Section {
-                    Text("选择要连接的圆屏，圆屏上的编号就是这里的名字。").font(.subheadline).foregroundColor(Self.sub)
-                    if ble.availableScreens.isEmpty {Text("正在搜索附近的圆屏…")}
-                    ForEach(ble.availableScreens){screen in
-                        Button(screen.name){ble.selectScreen(screen.id);showScreens=false;connectAnim.connectAutomatically()}
+        VStack(spacing: 0) {
+            SheetHeader(title: "切换设备",
+                        subtitle: "选择要连接的圆屏，圆屏上的编号就是这里的名字。",
+                        actionTitle: "重新搜索",
+                        onClose: { showScreens = false },
+                        onAction: { ble.beginScreenSelection() })
+            ScrollView {
+                VStack(spacing: 8) {
+                    if ble.availableScreens.isEmpty {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("正在搜索附近的圆屏…")
+                                .font(.subheadline)
+                                .foregroundColor(Self.sub)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 16)
+                    } else {
+                        ForEach(ble.availableScreens) { screen in
+                            Button {
+                                ble.selectScreen(screen.id)
+                                showScreens = false
+                                connectAnim.connectAutomatically()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "display")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(AppTheme.accent)
+                                        .frame(width: 38, height: 38)
+                                        .background(Circle().fill(AppTheme.accentSoft))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(screen.name)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundColor(AppTheme.text)
+                                            .lineLimit(1)
+                                        Text("点击连接")
+                                            .font(.caption)
+                                            .foregroundColor(AppTheme.sub)
+                                    }
+                                    Spacer(minLength: 4)
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundColor(AppTheme.stroke)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(RoundedRectangle(cornerRadius: 16).fill(AppTheme.card))
+                                .contentShape(RoundedRectangle(cornerRadius: 16))
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
-            }.navigationTitle("切换设备").toolbar {
-                ToolbarItem(placement:.cancellationAction){Button("取消"){showScreens=false}}
-                ToolbarItem(placement:.confirmationAction){Button("重新搜索"){ble.beginScreenSelection()}}
+                .padding(16)
             }
-        }.onAppear{ble.beginScreenSelection()}.onDisappear{ble.endScreenSelection()}
+        }
+        .background(AppTheme.bg.ignoresSafeArea())
+        .foregroundColor(AppTheme.text)
+        .onAppear { ble.beginScreenSelection() }
+        .onDisappear { ble.endScreenSelection() }
     }
 
     private func pages(wide: Bool) -> some View {
@@ -186,25 +243,27 @@ struct ContentView: View {
                 ScrollView {
                     Group {
                         if page == 0 && wide {
-                            // 宽屏：左侧完成摩托规划，右侧放收藏地点与轨迹入口
+                            // 宽屏：左侧完成摩托规划，右侧放收藏地点与轨迹概览
                             HStack(alignment: .top, spacing: 16) {
                                 VStack(alignment: .leading, spacing: 16) {
                                     header
                                     naviModeCard
                                 }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                 VStack(alignment: .leading, spacing: 16) {
                                     GlassChip(title: "收藏地点", icon: "mappin.and.ellipse") {
                                         closeSearch()
                                         showFavorites = true
                                     }
-                                    GlassChip(title: "导航轨迹", icon: "location.north.line", tint: Self.cyan) { page = 1 }
+                                    // 轨迹栏已并入导航，宽屏也在同一页保留这张卡。
+                                    // 窄屏由导航页分配剩余高度，宽屏在 ScrollView 里得给个明确高度。
+                                    rideGlanceCard.frame(height: 380)
                                 }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         } else {
                             VStack(alignment: .leading, spacing: 16) {
                                 if page == 1 {
-                                    ridesTabContent
-                                } else if page == 2 {
                                     deviceTabContent
                                 } else {
                                     settingsTabContent
@@ -213,7 +272,7 @@ struct ContentView: View {
                         }
                     // 内容滚过悬浮玻璃条后方，留白 ≈ 条高 + 安全区
                     }.padding(.horizontal, 16).padding(.top, 16)
-                        .padding(.bottom, page == 2 ? 104 : 128)     // 设备页一屏放得下，留白收窄
+                        .padding(.bottom, page == 1 ? 104 : 128)     // 设备页一屏放得下，留白收窄
                 }
                 .scrollBounceBehaviorIfFits()
             }
@@ -247,6 +306,23 @@ struct ContentView: View {
         }
     }
 
+    /// 旧版本是四栏（导航 / 轨迹 / 设备 / 我的），轨迹并入导航后压成三栏，
+    /// 存下来的下标要跟着迁移，否则升级后「设备」会落到「我的」。
+    /// 装回旧包会写回四栏下标，越界值先压回导航页，别让底部一个 tab 都不选中。
+    private func normalizeTabSelection() {
+        if tabScheme < 2 {
+            switch page {
+            case 1: page = 0      // 轨迹 → 导航（轨迹卡就在导航页）
+            case 2: page = 1      // 设备
+            case 3: page = 2      // 我的
+            default: page = 0
+            }
+            tabScheme = 2
+        } else if !(0..<TabSpec.count).contains(page) {
+            page = 0
+        }
+    }
+
     // MARK: 导航页（固定一屏）
     /// 导航页不再放 ScrollView：标题 + 导航卡 + 轨迹概览卡，卡与卡之间留 14，
     /// 轨迹卡吃掉剩下的高度。搜索结果是浮层，不参与这里的排版。
@@ -271,70 +347,6 @@ struct ContentView: View {
     /// 搜索浮层什么时候在：聚焦且有内容（结果或“搜索中/没找到”这类状态）
     private var searchPanelVisible: Bool {
         searchFocused && (!search.results.isEmpty || !search.status.isEmpty)
-    }
-
-    private var ridesTabContent: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("轨迹")
-                        .font(.system(size: 28, weight: .heavy, design: .rounded))
-                        .foregroundColor(AppTheme.text)
-                    Text(monthRideSummary)
-                        .font(.caption)
-                        .foregroundColor(AppTheme.sub)
-                }
-                Spacer()
-                GlassChip(title: "全部", icon: "list.bullet", tint: Self.cyan, compact: true) { showRides = true }
-            }
-            .padding(.top, 8)
-
-            if let active = rides.active {
-                CardView {
-                    Text("记录中 · \(active.mode) · \(Int(active.meters)) 米")
-                        .foregroundColor(AppTheme.accent).bold()
-                    Text("真实导航或巡航中自动写入轨迹点")
-                        .font(.caption).foregroundColor(AppTheme.sub)
-                }
-            }
-
-            if let latest = rides.rides.first {
-                NavigationLink(destination: RideDetailView(ride: latest)) {
-                    RideFeatureCard(ride: latest)
-                }
-                .buttonStyle(.plain)
-            } else if rides.active == nil {
-                CardView {
-                    Text("还没有导航记录")
-                        .foregroundColor(AppTheme.text).bold()
-                    Text("真实导航或巡航开始时自动记录；模拟导航不记录。")
-                        .font(.caption).foregroundColor(AppTheme.sub)
-                }
-            }
-
-            if rides.rides.count > 1 {
-                Text("更早的导航")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(AppTheme.sub)
-                    .padding(.top, 4)
-                let earlier = Array(rides.rides.dropFirst().prefix(12))
-                VStack(spacing: 0) {
-                    ForEach(Array(earlier.enumerated()), id: \.element.id) { idx, ride in
-                        NavigationLink(destination: RideDetailView(ride: ride)) {
-                            RideListRow(ride: ride)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                        }
-                        .buttonStyle(.plain)
-                        if idx < earlier.count - 1 {
-                            Divider().padding(.leading, 88).opacity(0.35)
-                        }
-                    }
-                }
-                .background(RoundedRectangle(cornerRadius: 18).fill(AppTheme.card))
-            }
-
-        }
     }
 
     private var monthRideSummary: String {
@@ -366,13 +378,14 @@ struct ContentView: View {
                         // 密钥缺了搜索和导航都用不了，放在最前；从导航页跳过来落地就能填
                         keyCard
                         appearanceCard
+                        themePackCard
                         layoutCard
                     case .voice:
                         voiceCard
 
                     case .about:
                         CardView {
-                            Text("关于").foregroundColor(AppTheme.text).bold()
+                            Text("关于").font(.headline).foregroundColor(AppTheme.text)
                             Text("\(APP_VERSION) · Build \(Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "2")").font(.footnote).foregroundColor(AppTheme.sub)
                             Text("AI 辅助开发 · 仅供非商业使用")
                                 .font(.caption).foregroundColor(AppTheme.sub)
@@ -385,27 +398,16 @@ struct ContentView: View {
     }
 
     private func secondaryPage<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                content()
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 128)
-        }
-        .background(AppTheme.bg.ignoresSafeArea())
-        .navigationBarHidden(false)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .background(InteractivePopEnabler())
+        SecondaryPage(title: title) { content() }
     }
 
     private func softenSegmentedChrome() {
         let app = UISegmentedControl.appearance()
         app.selectedSegmentTintColor = UIColor { t in
-            t.userInterfaceStyle == .dark
-                ? UIColor(red: 0.039, green: 0.518, blue: 1.000, alpha: 0.28)
-                : UIColor(red: 0.000, green: 0.478, blue: 1.000, alpha: 0.16)
+            // 分段控件的选中底色跟主题包走，否则换了暖金 / 苔绿还会留一块系统蓝
+            let accent = AppTheme.pack.accent
+            return UIColor(hex: t.userInterfaceStyle == .dark ? accent.dark : accent.light,
+                           alpha: t.userInterfaceStyle == .dark ? 0.28 : 0.16)
         }
         app.backgroundColor = UIColor { t in
             t.userInterfaceStyle == .dark
@@ -438,7 +440,7 @@ struct ContentView: View {
                     .foregroundColor(AppTheme.sub)
             }
             Spacer(minLength: 8)
-            Button { page = 2 } label: {
+            Button { page = 1 } label: {
                 HStack(spacing: 7) {
                     Circle()
                         .fill(ble.isReady ? AppTheme.green : AppTheme.amber)
@@ -468,7 +470,7 @@ struct ContentView: View {
 
     private var appearanceCard: some View {
         CardView {
-            Text("外观").foregroundColor(AppTheme.text).bold()
+            Text("外观").font(.headline).foregroundColor(AppTheme.text)
             Picker("外观", selection: $appearance) {
                 Text("跟随系统").tag(0); Text("浅色").tag(1); Text("深色").tag(2)
             }
@@ -998,7 +1000,7 @@ struct ContentView: View {
                 Text("先在音乐 App 中播放，再用圆屏切歌或暂停。歌名和歌手由播放器提供。")
                     .font(.caption).foregroundColor(AppTheme.sub)
             } else {
-                Button("授权 Apple Music 圆屏控制") { MusicBridge.shared.authorize() }
+                GlassButton(title: "授权 Apple Music 圆屏控制", icon: "music.note", style: .tinted) { MusicBridge.shared.authorize() }
                     .foregroundColor(AppTheme.accent)
             }
         }
@@ -1040,16 +1042,16 @@ struct ContentView: View {
     }
 
     /// 屏幕显示按功能拆卡：导航信息 / 地图与路线 / 夜间与弯道。
+    /// 主题包已经移到「我的 → 通用」，因为它同时改 App 强调色，不只是圆屏显示设置。
     private var displayCard: some View {
         VStack(spacing: 16) {
-            themePackCard
             navigationInfoCard
             mapDisplayCard
             nightCurveCard
         }
     }
 
-    /// 主题包：换包会连强调色和地图风格一起换，所以放在圆屏显示的最前面。
+    /// 主题包：换包会连强调色和地图风格一起换，所以和外观一起放在通用设置里。
     /// 名字不能叫 appearanceCard——外观（浅色/深色）那张卡已经占了。
     private var themePackCard: some View {
         CardView {
@@ -1108,7 +1110,7 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 Toggle("清爽模式", isOn: $settings.clean).foregroundColor(AppTheme.text).tint(AppTheme.pink)
                 Text("仅保留地图和路线，隐藏其他提示").font(.caption2).foregroundColor(AppTheme.sub)
-                Button("地图显示问题"){showMapReport=true}
+                GlassButton(title: "地图显示问题", icon: "exclamationmark.triangle", style: .tinted) { showMapReport = true }
             }
         }
     }
@@ -1126,7 +1128,7 @@ struct ContentView: View {
     }
     private var voiceCard: some View {
         CardView {
-            Text("导航语音").foregroundColor(AppTheme.text).bold()
+            Text("导航语音").font(.headline).foregroundColor(AppTheme.text)
             Toggle("导航静音", isOn: $settings.voiceMuted)
             Toggle("播报时压低音乐", isOn: $settings.duck)
             Picker("系统音色", selection: $voiceID) {
@@ -1135,9 +1137,15 @@ struct ContentView: View {
                     Text(voice.name).tag(voice.identifier)
                 }
             }
-            Text("语速"); Slider(value: $voiceRate, in: 0.3...0.6)
-            Text("音调"); Slider(value: $voicePitch, in: 0.7...1.4)
-            Button("试听播报") { Speech.shared.test() }
+            HStack {
+                Text("语速").foregroundColor(AppTheme.text)
+                Slider(value: $voiceRate, in: 0.3...0.6).tint(AppTheme.pink)
+            }
+            HStack {
+                Text("音调").foregroundColor(AppTheme.text)
+                Slider(value: $voicePitch, in: 0.7...1.4).tint(AppTheme.pink)
+            }
+            GlassButton(title: "试听播报", icon: "play.circle", style: .tinted) { Speech.shared.test() }
         }.foregroundColor(AppTheme.text).tint(Self.pink)
     }
 
@@ -1150,11 +1158,11 @@ struct ContentView: View {
     /// 密钥卡片在缺 Key 时自己描橙边，落地就能看见要填哪里。
     private func openKeySettings() {
         hideKeyboard()
-        page = 3
+        page = 2
         // 切页那一帧「我的」还没建出来，NavigationLink 尚不存在；等它建好再推。
         // 等的时候用户可能已经点了别的 tab，那就别再强推，否则下次进「我的」会自动弹进「通用」。
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            guard page == 3 else { return }
+            guard page == 2 else { return }
             settingsPush = .general
         }
     }
@@ -1281,24 +1289,24 @@ struct FavoritesSheet: View {
     @State private var tagDraft = ""
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                Picker("来源", selection: $tab) {
-                    Text("收藏地点").tag(0)
-                    Text("最近搜索").tag(1)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, 6)
-
-                if tab == 0 { favoritesList } else { recentList }
+        VStack(spacing: 0) {
+            SheetHeader(title: tab == 0 ? "收藏地点" : "最近搜索",
+                        subtitle: tab == 0
+                            ? "\(favorites.places.count) 个收藏 · 支持标签筛选"
+                            : "最近搜索过的目的地",
+                        onClose: { dismiss() })
+            Picker("来源", selection: $tab) {
+                Text("收藏地点").tag(0)
+                Text("最近搜索").tag(1)
             }
-            .background(AppTheme.bg.ignoresSafeArea())
-            .navigationTitle(tab == 0 ? "收藏地点" : "最近搜索")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+
+            if tab == 0 { favoritesList } else { recentList }
         }
+        .background(AppTheme.bg.ignoresSafeArea())
+        .foregroundColor(AppTheme.text)
         .sheet(item: $editing) { place in tagEditor(place) }
         // 筛选中的标签被删光后回到「全部」，不给用户留一个空列表
         .onChange(of: favorites.tags) { tags in
@@ -1421,55 +1429,69 @@ struct FavoritesSheet: View {
     }
 
     private func tagEditor(_ place: Favorites.Place) -> some View {
-        NavigationView {
-            Form {
-                Section {
+        VStack(spacing: 0) {
+            SheetHeader(title: "标签",
+                        subtitle: place.name,
+                        actionTitle: "保存",
+                        onClose: { editing = nil },
+                        onAction: {
+                            favorites.setTag(tagDraft, for: place)
+                            editing = nil
+                        })
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
                     TextField("标签，例如 家、公司", text: $tagDraft)
+                        .textFieldStyle(.plain)
+                        .foregroundColor(AppTheme.text)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 46)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.sunken))
                         // 与 Favorites.setTag 的上限一致，输入时就截住，避免保存时静默变短
                         .onChange(of: tagDraft) { if $0.count > 16 { tagDraft = String($0.prefix(16)) } }
-                } header: {
-                    Text(place.name).lineLimit(1)
-                } footer: {
                     Text("标签只存在本机，同一个标签可以标多个地点，最多 16 个字。")
-                }
-                if !favorites.tags.isEmpty {
-                    Section {
-                        ForEach(favorites.tags, id: \.self) { tag in
-                            Button { tagDraft = tag } label: {
-                                HStack {
-                                    Text(tag).foregroundColor(AppTheme.text)
-                                    Spacer()
-                                    if tag == tagDraft {
-                                        Image(systemName: "checkmark").foregroundColor(AppTheme.accent)
+                        .font(.caption)
+                        .foregroundColor(AppTheme.sub)
+                    if !favorites.tags.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("已有标签")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundColor(AppTheme.sub)
+                            ForEach(favorites.tags, id: \.self) { tag in
+                                Button { tagDraft = tag } label: {
+                                    HStack {
+                                        Text(tag).foregroundColor(AppTheme.text)
+                                        Spacer()
+                                        if tag == tagDraft {
+                                            Image(systemName: "checkmark").foregroundColor(AppTheme.accent)
+                                        }
                                     }
+                                    .padding(.horizontal, 12)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                    .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.card))
+                                    .contentShape(RoundedRectangle(cornerRadius: 12))
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
-                    } header: {
-                        Text("已有标签")
                     }
-                }
-                if !place.tagText.isEmpty {
-                    Section {
-                        Button("移除标签", role: .destructive) {
+                    if !place.tagText.isEmpty {
+                        Button(role: .destructive) {
                             favorites.setTag(nil, for: place)
                             editing = nil
+                        } label: {
+                            Label("移除标签", systemImage: "tag.slash")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity, minHeight: 44)
                         }
+                        .buttonStyle(.plain)
+                        .foregroundColor(AppTheme.red)
                     }
                 }
-            }
-            .navigationTitle("标签")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { editing = nil } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
-                        favorites.setTag(tagDraft, for: place)
-                        editing = nil
-                    }
-                }
+                .padding(16)
             }
         }
+        .background(AppTheme.bg.ignoresSafeArea())
+        .foregroundColor(AppTheme.text)
     }
 
     // MARK: 最近搜索
@@ -1541,6 +1563,34 @@ struct FavoritesSheet: View {
     }
 }
 
+// MARK: - 二级页
+
+/// 从「我的 / 设备」推进来的二级页：自定义页眉 + 内容。
+/// 不用系统导航栏，返回按钮和标题都落在 16pt 边距上，和弹窗页眉一致。
+struct SecondaryPage<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SheetHeader(title: title, back: true, onClose: { dismiss() })
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    content
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+                .padding(.bottom, 40)
+            }
+        }
+        .background(AppTheme.bg.ignoresSafeArea())
+        .navigationBarHidden(true)
+        .background(InteractivePopEnabler())
+    }
+}
+
 // MARK: - 小组件
 
 /// 搜索框在屏幕上的位置（全局坐标）。结果浮层靠它贴到输入框正下方，不用写死坐标。
@@ -1605,10 +1655,10 @@ private extension View {
 }
 
 enum TabSpec {
-    static let count=4
-    static let titles=["导航","轨迹","设备","我的"]
-    static let icons=["location.north","map","circle.circle","person"]
-    static let fillIcons=["location.north.fill","map.fill","circle.circle.fill","person.fill"]
+    static let count=3
+    static let titles=["导航","设备","我的"]
+    static let icons=["location.north","circle.circle","person"]
+    static let fillIcons=["location.north.fill","circle.circle.fill","person.fill"]
 }
 enum TabLayout {
     static func isWide(size:CGSize,hSizeClass:UserInterfaceSizeClass?)->Bool {size.width>=700}

@@ -29,15 +29,19 @@ struct ShareVerificationView:View {
     let done:()->Void
     @Environment(\.dismiss) private var dismiss
     var body:some View {
-        NavigationView {
-            VStack(spacing:12){
-                Text("在高德页面完成登录或验证，再点右上角返回重试。登录信息只保存在本机。").font(.caption).padding(.horizontal)
-                ShareVerificationBrowser(page:page ?? URL(string:"https://www.amap.com/")!)
-            }.navigationTitle("高德网页验证").toolbar{
-                ToolbarItem(placement:.cancellationAction){Button("取消"){dismiss()}}
-                ToolbarItem(placement:.confirmationAction){Button("完成并重试"){dismiss();done()}}
-            }
+        VStack(spacing: 0) {
+            SheetHeader(title: "高德网页验证",
+                        subtitle: "完成登录或验证后点右上角重试；登录信息只保存在本机",
+                        actionTitle: "完成并重试",
+                        onClose: { dismiss() },
+                        onAction: { dismiss(); done() })
+            ShareVerificationBrowser(page:page ?? URL(string:"https://www.amap.com/")!)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
         }
+        .background(AppTheme.bg.ignoresSafeArea())
+        .foregroundColor(AppTheme.text)
     }
 }
 

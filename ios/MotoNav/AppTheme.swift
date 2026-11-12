@@ -69,8 +69,8 @@ enum AppTheme {
     /// 历史别名 → 强调色
     static var cyan: Color { accent }
 
-    // MARK: Tab 选中态：四 Tab 同一强调色
-    static var tabAccents: [Color] { [accent, accent, accent, accent] }
+    // MARK: Tab 选中态：三个 Tab 同一强调色
+    static var tabAccents: [Color] { [accent, accent, accent] }
 
     /// 标题（实色字重，不做渐变；必须是计算属性，text 会随包变）
     static var titleGradient: LinearGradient {
@@ -206,7 +206,114 @@ struct GlassButton: View {
     }
 }
 
-/// 小芯片：选中 = 蓝软底 + 蓝字；默认 = 灰底
+// MARK: - 统一页眉
+
+/// 弹窗 / 独立页的统一页眉：左侧圆形返回或关闭按钮，标题 + 副标题，右侧可选主操作。
+/// 系统导航栏的贴边文字按钮不再使用，所有标题都落在 16pt 边距上，热区固定 40pt。
+struct SheetHeader: View {
+    let title: String
+    var subtitle: String? = nil
+    var back = false
+    var actionTitle: String? = nil
+    var actionEnabled = true
+    let onClose: () -> Void
+    var onAction: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Button(action: onClose) {
+                Image(systemName: back ? "chevron.left" : "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(AppTheme.text)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(AppTheme.secondaryFill.opacity(0.8)))
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(back ? "返回" : "关闭")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 22, weight: .heavy, design: .rounded))
+                    .foregroundColor(AppTheme.text)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundColor(AppTheme.sub)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            if let actionTitle, let onAction {
+                Button(action: onAction) {
+                    Text(actionTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(actionEnabled ? AppTheme.accent : AppTheme.sub.opacity(0.5))
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 44)
+                        .background(Capsule().fill(actionEnabled ? AppTheme.accentSoft : AppTheme.secondaryFill.opacity(0.6)))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(!actionEnabled)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 10)
+    }
+}
+
+/// 轻提示：操作已经生效，但页面结构不该跟着跳。
+struct ToastBanner: View {
+    let text: String
+    var icon = "checkmark.circle.fill"
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon).font(.system(size: 14, weight: .semibold))
+            Text(text).font(.footnote.weight(.semibold)).lineLimit(2)
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Capsule().fill(Color.black.opacity(0.82)))
+        .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// 地图缩放 / 全览按钮：圆形毛玻璃，内嵌预览和全屏共用。
+struct MapControlButton: View {
+    let icon: String
+    let label: String
+    var size: CGFloat = 38
+    let action: () -> Void
+
+    private var iconSize: CGFloat { size >= 44 ? 15 : 14 }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: iconSize, weight: .semibold))
+                .foregroundColor(AppTheme.text)
+                .frame(width: size, height: size)
+                .background(Circle().fill(.ultraThinMaterial))
+                .overlay(Circle().strokeBorder(AppTheme.stroke.opacity(0.25), lineWidth: 1))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
+        .accessibilityLabel(label)
+    }
+}
+
+/// 小芯片：选中 = 强调色软底 + 强调色字；默认 = 灰底
 struct GlassChip: View {
     let title: String
     var icon: String? = nil

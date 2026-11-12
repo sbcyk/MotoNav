@@ -133,27 +133,6 @@ struct RideListRow: View {
     }
 }
 
-struct RideFeatureCard: View {
-    let ride: RideRecorder.Ride
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            RideTrackMapView(fixes: ride.fixes, interactive: false, lineWidth: 3.5, compactMarkers: true)
-                .frame(height: 160)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            HStack {
-                Text("导航记录").font(.body.weight(.semibold)).foregroundColor(AppTheme.text)
-                Spacer()
-                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundColor(AppTheme.sub)
-            }
-            Text("\(timeLabel(ride.started)) 出发 · \(NaviBridge.distText(Int(ride.meters))) · \(durationText(ride))")
-                .font(.caption)
-                .foregroundColor(AppTheme.sub)
-        }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 18).fill(AppTheme.card))
-    }
-}
-
 struct RideDetailView: View {
     let ride: RideRecorder.Ride
     @ObservedObject var recorder = RideRecorder.shared
@@ -162,44 +141,48 @@ struct RideDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                RideTrackMapView(fixes: ride.fixes, interactive: true, lineWidth: 5, compactMarkers: false)
-                    .frame(height: 280)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        VStack(spacing: 0) {
+            SheetHeader(title: "导航详情",
+                        subtitle: timeLabel(ride.started),
+                        back: true,
+                        onClose: { dismiss() })
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    RideTrackMapView(fixes: ride.fixes, interactive: true, lineWidth: 5, compactMarkers: false)
+                        .frame(height: 280)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-                CardView {
-                    HStack {
-                        metric("距离", NaviBridge.distText(Int(ride.meters)))
-                        metric("耗时", durationText(ride))
-                        metric("平均", avgSpeedText(ride))
-                        metric("最高", maxSpeedText(ride))
+                    CardView {
+                        HStack {
+                            metric("距离", NaviBridge.distText(Int(ride.meters)))
+                            metric("耗时", durationText(ride))
+                            metric("平均", avgSpeedText(ride))
+                            metric("最高", maxSpeedText(ride))
+                        }
+                        Divider().opacity(0.35)
+                        row("出发", timeLabel(ride.started))
+                        row("模式", ride.mode)
+                        row("轨迹点", "\(ride.fixes.count)")
                     }
-                    Divider().opacity(0.35)
-                    row("出发", timeLabel(ride.started))
-                    row("模式", ride.mode)
-                    row("轨迹点", "\(ride.fixes.count)")
-                }
 
-                HStack(spacing: 10) {
-                    GlassButton(title: "导出 GPX", icon: "square.and.arrow.up", style: .tinted, tint: AppTheme.accent) {
-                        do { exportURL = try recorder.export(ride) }
-                        catch { recorder.error = error.localizedDescription }
+                    HStack(spacing: 10) {
+                        GlassButton(title: "导出 GPX", icon: "square.and.arrow.up", style: .tinted, tint: AppTheme.accent) {
+                            do { exportURL = try recorder.export(ride) }
+                            catch { recorder.error = error.localizedDescription }
+                        }
+                        GlassButton(title: "删除", icon: "trash", style: .destructive) {
+                            confirmDelete=true
+                        }
                     }
-                    GlassButton(title: "删除", icon: "trash", style: .destructive) {
-                        confirmDelete=true
+                    if !recorder.error.isEmpty {
+                        Text(recorder.error).font(.caption).foregroundColor(AppTheme.red)
                     }
                 }
-                if !recorder.error.isEmpty {
-                    Text(recorder.error).font(.caption).foregroundColor(AppTheme.red)
-                }
+                .padding(16)
             }
-            .padding(16)
         }
         .background(AppTheme.bg.ignoresSafeArea())
-        .navigationBarHidden(false)
-        .navigationTitle("导航详情")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .background(InteractivePopEnabler())
         .alert("删除这条导航记录？",isPresented:$confirmDelete){Button("删除",role:.destructive){recorder.remove(ride);dismiss()};Button("取消",role:.cancel){}}
         .sheet(isPresented: Binding(get: { exportURL != nil }, set: { if !$0 { exportURL = nil } })) {

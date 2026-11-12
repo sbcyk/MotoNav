@@ -125,7 +125,7 @@ enum MotorRoutes {
                     DispatchQueue.main.async {WKWebsiteDataStore.default().httpCookieStore.setCookie(cookie){c.resume()}}
                 }
             }
-            if [401,403].contains(response.statusCode) {throw AmapShare.Fail("高德要求登录或网页验证，请点“高德登录／验证”处理后重试")}
+            if [401,403].contains(response.statusCode) {throw AmapShare.Fail("高德要求登录或网页验证：回首页用「导入高德路线」完成网页验证后再试")}
             if response.statusCode==429 {throw AmapShare.Fail("请求较频繁，请稍后再试")}
         }
         guard (response as? HTTPURLResponse)?.statusCode == 200, bytes.count <= 8*1024*1024 else { throw AmapShare.Fail("网页算路请求失败或数据过大") }
@@ -135,7 +135,7 @@ enum MotorRoutes {
     }
     static func parse(_ bytes: Data, request: MotorRequest) throws -> [MotorRoute] {
         guard let json = try JSONSerialization.jsonObject(with: bytes) as? [String: Any], (json["code"] as? NSNumber)?.intValue == 1,
-              let paths = json["data"] as? [[String: Any]], (1...10).contains(paths.count) else { throw AmapShare.Fail("高德未返回摩托车路线，请回网页检查登录或验证提示") }
+              let paths = json["data"] as? [[String: Any]], (1...10).contains(paths.count) else { throw AmapShare.Fail("高德未返回摩托车路线；若网页要求登录或验证，回首页用「导入高德路线」完成网页验证后再试") }
         return try paths.map { path in
             try Task.checkCancellation()
             guard let steps = path["steps"] as? [[String: Any]], !steps.isEmpty, steps.count <= 10000 else { throw AmapShare.Fail("路线缺少分段") }
@@ -365,30 +365,6 @@ final class WebMotorSession: ObservableObject {
     }
 }
 
-final class MotorBrowser: NSObject, ObservableObject, WKNavigationDelegate {
-    @Published var address = "https://www.amap.com/ssr/dir?type=4"
-    @Published var status = ""
-    let web: WKWebView
-    override init() {
-        let config = WKWebViewConfiguration(); config.websiteDataStore = .default()
-        web = WKWebView(frame: .zero,configuration: config)
-        super.init(); web.customUserAgent = MotorRoutes.ua; web.navigationDelegate = self
-        web.load(URLRequest(url: URL(string: address)!))
-    }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { address = webView.url?.absoluteString ?? address }
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { status = error.localizedDescription }
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard let u = navigationAction.request.url, u.scheme == "https", let host = u.host, host == "amap.com" || host.hasSuffix(".amap.com") || host == "aliyun.com" || host.hasSuffix(".aliyun.com") else {
-            status = "此页面试图打开外部应用或其他网站，请在高德网页完成路线规划"; decisionHandler(.cancel); return
-        }
-        if navigationAction.targetFrame == nil { webView.load(navigationAction.request); decisionHandler(.cancel) } else { decisionHandler(.allow) }
-    }
-}
-struct MotorBrowserView: UIViewRepresentable {
-    let browser: MotorBrowser
-    func makeUIView(context: Context) -> WKWebView { browser.web }
-    func updateUIView(_ uiView: WKWebView,context: Context) {}
-}
 struct MotorMap:UIViewRepresentable {
     let route:MotorRoute;let position:MotorPoint?;let overview:Bool
     final class Coordinator {
@@ -442,29 +418,138 @@ struct MotorMap:UIViewRepresentable {
     }
 }
 /// 规划页的多方案预览：所有方案一次画全，选中的那条垫底边压在最上层。
-/// 和 MotorMap 的分工：MotorMap 跟车走（导航中用），这里只在选方案时看全貌、不可拖动。
+/// 和 MotorMap 的分工：MotorMap 跟车走（导航中用），这里看全貌。
 /// 起点、途经点、终点都从方案的 request 取，所以调用方只需要给方案和选中项。
+///
+/// 以前地图第一次拿到的是 0×0 边界，`showOverlays` 会按错误的可视区把路线缩到很小；
+/// 现在由下面的 `RoutePreviewMapView` 在布局完成后补一次全览，并允许双指缩放、
+/// 全屏后拖动。
+final class RouteMapPreviewModel: ObservableObject {
+    fileprivate weak var map: MAMapView?
+    fileprivate var lines: [MAPolyline] = []
+    /// 全览留白：全屏时给顶部标题和底部方案条让出空间，避免路线压在他们下面。
+    var edgePadding = UIEdgeInsets(top: 46, left: 34, bottom: 46, right: 34)
+    private var needsFit = true
+    private var lastSize: CGSize = .zero
+
+    func attach(_ map: MAMapView) {
+        self.map = map
+        // 新地图实例先用空线集，等 updateUIView 里建好新路线再全览，
+        // 避免布局回调拿上一条路线的线做一次无意义的缩放。
+        lines = []
+        lastSize = .zero
+        needsFit = true
+    }
+
+    func setLines(_ lines: [MAPolyline], fit: Bool) {
+        self.lines = lines
+        if fit { needsFit = true }
+        fitIfPossible()
+    }
+
+    /// 地图布局尺寸变化时重算一次全览，解决首帧边界为 0 导致的“缩得太远”。
+    func layoutChanged(_ size: CGSize) {
+        guard size.width > 1, size.height > 1 else { return }
+        // 用 0.5pt 容差，避免布局抖动导致每帧都重新全览、把用户的缩放顶掉。
+        if abs(size.width - lastSize.width) > 0.5 || abs(size.height - lastSize.height) > 0.5 {
+            lastSize = size
+            needsFit = true
+        }
+        fitIfPossible()
+    }
+
+    func requestFit() {
+        needsFit = true
+        fitIfPossible()
+    }
+
+    private func fitIfPossible() {
+        guard needsFit, let map, map.bounds.width > 1, map.bounds.height > 1, !lines.isEmpty else { return }
+        needsFit = false
+        map.showOverlays(lines, edgePadding: edgePadding, animated: false)
+    }
+
+    func zoom(_ delta: CGFloat) {
+        guard let map else { return }
+        map.setZoomLevel(max(3, min(19, map.zoomLevel + delta)), animated: true)
+    }
+}
+
+/// 等布局有真实尺寸后再回调，避免在 0×0 时算全览。
+final class RoutePreviewMapView: MAMapView {
+    var onLayout: ((CGSize) -> Void)?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onLayout?(bounds.size)
+    }
+}
+
 struct MotorRoutesMap:UIViewRepresentable{
-    let routes:[MotorRoute];let selected:Int
-    final class Coordinator{let delegate=RouteMapDelegate();var key=""}
+    let routes:[MotorRoute]
+    let selected:Int
+    @ObservedObject var model:RouteMapPreviewModel
+    var interactive=false
+
+    final class Coordinator{
+        let delegate=RouteMapDelegate()
+        var fullKey=""
+        var routeKey=""
+    }
+
+    private var fitPadding:UIEdgeInsets {
+        interactive
+            ? UIEdgeInsets(top: 96, left: 36, bottom: 96, right: 36)
+            : UIEdgeInsets(top: 46, left: 34, bottom: 46, right: 34)
+    }
+
     func makeCoordinator()->Coordinator{Coordinator()}
+
     func makeUIView(context:Context)->MAMapView{
-        let map=MAMapView(frame:.zero)
+        let map=RoutePreviewMapView(frame:.zero)
         map.mapType=Settings.shared.paletteNight ? .standardNight:.standard
         map.delegate=context.coordinator.delegate.asDelegate
-        map.showsCompass=false;map.showsScale=false
-        // 嵌在上下滑的页面里，只做预览：禁掉手势，免得和 ScrollView 抢
-        map.isScrollEnabled=false;map.isZoomEnabled=false
-        map.isRotateEnabled=false;map.isRotateCameraEnabled=false
+        map.showsCompass=false
+        map.showsScale=false
+        // 内嵌预览只开缩放，竖向拖动留给外层页面；全屏时恢复拖动。
+        map.isScrollEnabled=interactive
+        map.isZoomEnabled=true
+        map.isRotateEnabled=false
+        map.isRotateCameraEnabled=false
+        model.edgePadding = fitPadding
+        let previewModel=model
+        map.onLayout={ [weak previewModel] size in
+            guard let previewModel else{return}
+            previewModel.layoutChanged(size)
+        }
+        model.attach(map)
         return map
     }
+
     func updateUIView(_ map:MAMapView,context:Context){
         let c=context.coordinator
         let type:MAMapType=Settings.shared.paletteNight ? .standardNight:.standard
         if map.mapType != type{map.mapType=type}
-        let key=routes.map{"\($0.id.uuidString):\($0.points.count)"}.joined(separator:",")+"|\(selected)"
-        if c.key==key{return}
-        c.key=key
+        if let preview=map as? RoutePreviewMapView{
+            let previewModel=model
+            preview.onLayout={ [weak previewModel] size in
+                guard let previewModel else{return}
+                previewModel.layoutChanged(size)
+            }
+        }
+        map.isScrollEnabled=interactive
+        model.edgePadding = fitPadding
+
+        let routeKey=routes.map{"\($0.id.uuidString):\($0.points.count)"}.joined(separator:",")
+        let fullKey=routeKey+"|\(selected)"
+        if c.fullKey==fullKey{
+            // 尺寸可能刚确定（sheet 展开、旋转），即使重画条件没变也要补一次全览。
+            model.layoutChanged(map.bounds.size)
+            return
+        }
+        let routeSetChanged=c.routeKey != routeKey
+        c.fullKey=fullKey;c.routeKey=routeKey
+
         if let old=map.overlays{map.removeOverlays(old)}
         if let old=map.annotations{map.removeAnnotations(old.filter{!($0 is MAUserLocation)})}
         var lines:[MAPolyline]=[]
@@ -478,10 +563,10 @@ struct MotorRoutesMap:UIViewRepresentable{
             add(routes[selected].points,"selCasing")
             add(routes[selected].points,"sel")
         }
-        if !lines.isEmpty{
-            map.addOverlays(lines)
-            map.showOverlays(lines,edgePadding:UIEdgeInsets(top:36,left:28,bottom:36,right:28),animated:false)
-        }
+        map.addOverlays(lines)
+        // 只有路线集合变了才重新全览；点选另一条方案只换高亮，不把当前缩放位置重置。
+        model.setLines(lines, fit: routeSetChanged)
+
         guard let plan=routes.first else{return}
         // 同一次算路的方案共用一个请求，起终点和途经点取第一条的就行
         let marks=[plan.request.start]+plan.request.vias+[plan.request.end]
