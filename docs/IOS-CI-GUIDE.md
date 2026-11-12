@@ -91,7 +91,7 @@ Actions → 左侧 `iOS Quick Build (unsigned IPA)` → 右侧 `Run workflow` �
 | 想改什么 | 改哪个 |
 |---|---|
 | 主题色、圆角、字体、整体配色 | `ios/MotoNav/AppTheme.swift` |
-| 四栏主界面布局（导航/轨迹/圆屏/我的） | `ios/MotoNav/ContentView.swift`（53KB，逐段改，别整体重写） |
+| 三栏主界面布局（导航/设备/我的） | `ios/MotoNav/ContentView.swift`（逐段改，别整体重写） |
 | 导航过程页样式 | `ios/MotoNav/NaviBridge.swift` 里的视图部分 |
 | 图标 | `ios/MotoNav/Assets.xcassets/AppIcon.appiconset/icon.png`（必须 1024×1024 不透明） |
 | 版本号 | `ios/MotoNav/Config.swift` |

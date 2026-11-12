@@ -17,9 +17,11 @@
 // 这些全部由 MotoNav.ino 在本文 include 之前按顺序引入，这里不再重复 include ——
 // 用不同相对路径再引一次 HomeClock.h 会让编译器当成两个文件，直接报类重定义。
 
-#define HB_GOLD_TXT   0xF6F5   // 暖白金：时间、温度
-#define HB_GOLD_SUB   0xD5F1   // 暗金：日期、地点、星期
-#define HB_GOLD_RING  0xCD04   // 环
+// v2.6 配色按主题包取：艾尔登暖金 / 苔林冷绿。
+// 写成函数而不是宏——appearIdx 运行时会变，宏在编译期就定死了。
+static inline uint16_t hbTxt()  { return appearIdx == APPEAR_MOSS ? 0xEF7D : 0xF6F5; }  // #EDF3EE / 暖白金
+static inline uint16_t hbSub()  { return appearIdx == APPEAR_MOSS ? 0x8D53 : 0xD5F1; }  // #8FA99A / 暗金
+static inline uint16_t hbRing() { return appearIdx == APPEAR_MOSS ? 0x3AE9 : 0xCD04; }  // #3E5C4A / 金环
 #define HB_RING_R     224      // 环半径：星芒半高 7，r 必须 <= 225，否则 12/6 点尖端会画出屏
 #define HB_SPARK_R    7        // 星芒半高；fillTriangle 不裁剪，越界会写坏画布后面的内存
 
@@ -58,14 +60,15 @@ static void hDrawRing() {
   const int steps = 900;
   for (int i = 0; i < steps; i++) {
     const float t = (float)i * 2.0f * PI / steps;
-    aaDisc(CX + cosf(t) * r, CX + sinf(t) * r, 1.3f, HB_GOLD_RING);
+    aaDisc(CX + cosf(t) * r, CX + sinf(t) * r, 1.3f, hbRing());
   }
+  if (appearIdx == APPEAR_MOSS) return;              // v2.6 苔林只要一圈表圈，不画星芒
   for (int i = 0; i < 4; i++) {                     // 12 / 3 / 6 / 9 四向星芒
     const float t = (float)i * PI * 0.5f;
     const int x = (int)(CX + cosf(t) * r + 0.5f);
     const int y = (int)(CX + sinf(t) * r + 0.5f);
-    gfx->fillTriangle(x, y - HB_SPARK_R, x + 5, y, x, y + HB_SPARK_R, HB_GOLD_TXT);
-    gfx->fillTriangle(x, y - HB_SPARK_R, x - 5, y, x, y + HB_SPARK_R, HB_GOLD_TXT);
+    gfx->fillTriangle(x, y - HB_SPARK_R, x + 5, y, x, y + HB_SPARK_R, hbTxt());
+    gfx->fillTriangle(x, y - HB_SPARK_R, x - 5, y, x, y + HB_SPARK_R, hbTxt());
   }
 }
 
@@ -97,7 +100,7 @@ void drawHomeBand(unsigned long now) {
 
   char time[6], date[11];
   const bool ok = homeClock.format(now, time, date);
-  printCentered(ok ? time : "--:--", CX, HB_TIME_Y, 8, HB_GOLD_TXT);
+  printCentered(ok ? time : "--:--", CX, HB_TIME_Y, 8, hbTxt());
 
   if (ok) {
     HomeClock::Reading rd;
@@ -107,17 +110,17 @@ void drawHomeBand(unsigned long now) {
     } else {
       snprintf(line, sizeof(line), "%s", date);
     }
-    printCentered(line, CX, HB_DATE_Y, 2, HB_GOLD_SUB);
+    printCentered(line, CX, HB_DATE_Y, 2, hbSub());
   } else {
-    printCentered("---- -- --", CX, HB_DATE_Y, 2, HB_GOLD_SUB);
+    printCentered("---- -- --", CX, HB_DATE_Y, 2, hbSub());
   }
 
   // 地点：左侧一个菱点 + 文字。没收到 #WL 就整段不画，不留空图标。
   if (wxPlace[0]) {
     const int lx = CX - 132;
-    gfx->fillTriangle(lx + 5, HB_ROW_Y + 2, lx + 9, HB_ROW_Y + 8, lx + 5, HB_ROW_Y + 14, HB_GOLD_SUB);
-    gfx->fillTriangle(lx + 5, HB_ROW_Y + 2, lx + 1, HB_ROW_Y + 8, lx + 5, HB_ROW_Y + 14, HB_GOLD_SUB);
-    hTextAt(wxPlace, lx + 14, HB_ROW_Y, 2, HB_GOLD_SUB);
+    gfx->fillTriangle(lx + 5, HB_ROW_Y + 2, lx + 9, HB_ROW_Y + 8, lx + 5, HB_ROW_Y + 14, hbSub());
+    gfx->fillTriangle(lx + 5, HB_ROW_Y + 2, lx + 1, HB_ROW_Y + 8, lx + 5, HB_ROW_Y + 14, hbSub());
+    hTextAt(wxPlace, lx + 14, HB_ROW_Y, 2, hbSub());
   }
 
   // 天气：图标在左、温度右对齐到 CX+128。没数据整段不画——不写 "--°" 骗人。
@@ -126,7 +129,7 @@ void drawHomeBand(unsigned long now) {
     char t[8];
     snprintf(t, sizeof(t), "%d", wxTemp);
     const int tw = (int)strlen(t) * 6 * 2;
-    hTextAt(t, CX + 128 - tw - 6, HB_ROW_Y, 2, HB_GOLD_TXT);
-    aaDisc(CX + 126, HB_ROW_Y + 6, 2.2f, HB_GOLD_TXT);   // 度数小圈
+    hTextAt(t, CX + 128 - tw - 6, HB_ROW_Y, 2, hbTxt());
+    aaDisc(CX + 126, HB_ROW_Y + 6, 2.2f, hbTxt());   // 度数小圈
   }
 }

@@ -130,7 +130,7 @@ firmware/
     ├── src/power/              电量、关机
     ├── src/input/              Buttons.h：BOOT + PWR 两个侧键
     ├── src/diagnostics/
-    └── resources/              BrandLogos.h(658KB) · CameraIconPixels.h(253KB) · HomeSprites.h · RiderSprites.h（旧像素骑手，已不引用）
+    └── resources/              BrandLogos.h(658KB) · CameraIconPixels.h(253KB) · HomeSprites.h · HomeSpritesMoss.h(55KB)
 ```
 
 ### 页面清单
@@ -145,7 +145,7 @@ firmware/
 | `src/pages/PairingPage.h` | 配对页 |
 | `src/pages/PageNavigation.h` | 换页调度 |
 
-### 主题包（v2.5）
+### 主题包（v2.5 起；首页画面 v2.6 补上）
 
 一套**包**同时决定 App 强调色和默认地图配色；**地图风格**是另一层，决定地图怎么画（雷达、龙珠雷达那几套连底图都没有，两者不能混成一个概念）。
 
@@ -158,7 +158,7 @@ firmware/
 - 地图仍是 `#t,N` + `themeIdx`，包不直接改它：iOS 换包时**顺手**把配套风格一起发出去，避免停在「苔林包 + 粉紫地图」的半套状态
 - 色板落在 `ios/MotoNav/AppTheme.swift` 的 `ThemePack`（`accent` + `palette`）。`AppTheme` 的语义色全部改成了 `static var` 计算属性——写成 `static let` 会在第一次访问时把颜色定死，换包不生效
 - 换包要重建整棵视图树：`MotoNavApp` 用 `@AppStorage("appearance")` 当 `.id()`，因为颜色是计算属性、没有可观察源
-- **首页画面还没做**：苔林包当前复用艾尔登的 `HomeSprites`，信息带环与文字仍是暖金。要换画面得先有第二套 233×233 8bpp 两态素材，见 `docs/需求清单.md`
+- **首页画面按包分流**（v2.6）：`appearIdx == APPEAR_MOSS` 走 `HomeSpritesMoss.h` 的整帧路径，否则走艾尔登的黄昏赐福。苔林素材只有**一张** 233×233 8bpp 未点灯底图，两态不换素材——已连接时由固件在灯位叠加几何光（`MOSS_LAMP_*` / `hAddEllipse` 加色），未连接不叠。别试图用「一份索引 + 两套调色板」还原熄灯态：这张底图的天空和车灯同属暖白，按颜色分不了带，圈出灯区后也没法把天空补回去
 
 ### 主循环（`MotoNav.ino`，每轮）
 
@@ -348,7 +348,7 @@ esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRAM=opi,CD
 
 - 分区表只决定代码和文件写入的地址与上限，不改变 Flash 模式/频率、PSRAM 模式、CPU 频率与 cache 配置，因此与运行速度无关。
 - 切换方案必须整片刷（`--erase-all`），NVS 位于 `0x9000`，其余区域地址随方案变化，设置与手机配对会清空。
-- 当前固件占用 app0 1,406,839 字节（镜像，v2.5.0），约 4.50MB 方案的 29%、12.50MB 方案的 12%。
+- 当前固件占用 app0 1,462,463 字节（镜像，v2.6.0），约 4.50MB 方案的 30%、12.50MB 方案的 12%。
 - 当前固件未挂载任何文件系统：源码中无 `FATFS`/`FFat`/`SPIFFS` 引用，上述 ffat / spiffs 分区目前均为未使用空间。
 - `max_app_32MB.csv`（单槽 31.87MB，无 OTA、无文件系统）存在于 `tools/partitions/`，但不是菜单项，要使用需自定义分区表。
 
@@ -429,7 +429,8 @@ iOS 出包：`Run workflow` → 选分支（build 号由 run 号自动生成，�
 | `CHANGELOG.md` | 版本改动摘要，Keep a Changelog 格式（发版时写） |
 | `docs/需求清单.md` | 需求、进度、阻塞项、验收记录（唯一记录处） |
 | `docs/IOS-CI-GUIDE.md` | iOS 云端出包与装机步骤（0–8 节） |
-| `scripts/home_sprites.py` | 生成主页两态画面 `resources/HomeSprites.h`（8bpp 233×233，两态共用一张 256 色调色板）。参考图都在 `assets/reference/`：<br>· `home-v3-standing.png` 已连接态：站姿牵马，黄金树、王城、峡谷一起入画<br>· `home-v3-seated.png` 未连接态：与前者同源生成，只把人改成独坐、马去掉<br>脚本以母版为底，只把「人马矩形」和「赐福柱带」两块换成另一张图的像素（矩形 + 高斯羽化），区外逐像素复制母版；两态共用一张调色板 + 同一个 Bayer 抖动场（偏移只跟坐标有关，同一坐标同色必得同一索引），最后校验“两区之外失配 = 0”，不为 0 直接报错。`HOME_BEAM_*` 锚点与 `HOME_MAN_*` / `HOME_HRS_*` 两块矩形也由它写出；锚点 x 取“画面下部暖色行数最多的那一列”，y 取 `main()` 里传的基线常数（当前 204）——换参考图或改取景框后要重新量基线，对不上脚本会报错而不是静默跑偏。旧的 `home-standing*.png` / `home-seated.png` / `home-dual-pose.png` 已不引用，留作备选 |
+| `scripts/home_sprites.py` | 生成主页两态画面 `resources/HomeSprites.h`（8bpp 233×233，两态共用一张 256 色调色板）。参考图都在 `assets/reference/`：<br>· `home-v3-standing.png` 已连接态：站姿牵马，黄金树、王城、峡谷一起入画<br>· `home-v3-seated.png` 未连接态：与前者同源生成，只把人改成独坐、马去掉<br>脚本以母版为底，只把「人马矩形」和「赐福柱带」两块换成另一张图的像素（矩形 + 高斯羽化），区外逐像素复制母版；两态共用一张调色板 + 同一个 Bayer 抖动场（偏移只跟坐标有关，同一坐标同色必得同一索引），最后校验“两区之外失配 = 0”，不为 0 直接报错。`HOME_BEAM_*` 锚点与 `HOME_MAN_*` / `HOME_HRS_*` 两块矩形也由它写出；锚点 x 取“画面下部暖色行数最多的那一列”，y 取 `main()` 里传的基线常数（当前 204）——换参考图或改取景框后要重新量基线，对不上脚本会报错而不是静默跑偏 |
+| `scripts/home_sprites_moss.py` | 生成苔林首页 `resources/HomeSpritesMoss.h`（单张 233×233 8bpp 底图 + 车灯几何宏，索引 54,289 B + 调色板 512 B）。参考图 `assets/reference/home-moss-base.png`：苔林山道 + 侧视摩托车，**灯未点亮、画面无任何文字**。脚本会校验灯盘位置确实是暗的（`LAMP_DARK_MAX`），换底图后灯位跑偏直接报错。车灯的灯盘半径 / 辉光半径写在 `LAMP` 里，改灯位改这一处；**只画亮起来的灯罩，不要加光锥或地面光斑** |
 | `scripts/home_preview.py` | PC 端预览主页画面，输出 `scripts/preview/*.png`，需 Pillow |
 | `.github/workflows/ios-quick.yml` | 精简工作流，8~15 分钟出 unsigned IPA |
 | `firmware/README.md` | 固件编译、打包与烧录说明（版本读 `RELEASE_VERSION`） |

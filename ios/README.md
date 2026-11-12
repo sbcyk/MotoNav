@@ -1,6 +1,6 @@
 # MotoNav iOS
 
-iPhone 端源码。最低 iOS 15，四栏目：导航、轨迹、设备、我的；iOS 端不含红绿灯读秒。功能说明见[项目主页](../README.md)，改动记录见 [CHANGELOG](../CHANGELOG.md)，配套圆屏见[固件说明](../firmware/README.md)，两端协议见[技术文档](../docs/MotoNav-技术文档.md)。
+iPhone 端源码。最低 iOS 15，三栏目：导航、设备、我的；iOS 端不含红绿灯读秒。功能说明见[项目主页](../README.md)，改动记录见 [CHANGELOG](../CHANGELOG.md)，配套圆屏见[固件说明](../firmware/README.md)，两端协议见[技术文档](../docs/MotoNav-技术文档.md)。
 
 ## 构建
 

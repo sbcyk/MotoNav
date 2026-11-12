@@ -85,7 +85,7 @@
 
 ```
 ┌────────────────────────── 手机端（Android / iOS） ──────────────────────────┐
-│  UI 层        MainActivity / SwiftUI 四栏                                   │
+│  UI 层        MainActivity / SwiftUI 三栏                                   │
 │  导航层       NaviBridge（高德导航 SDK 回调 → 指令）                         │
 │  地图供给层   MapFeeder（沿线预取、带宽预算、确认驱动）                       │
 │  抓图层       AmapCaptureHost / AmapSdkRaster（渲染→截屏→降采样→编码）       │
@@ -197,7 +197,7 @@ firmware/boards/175/MotoNav/
 ├── src/display/                DisplayPipeline（整屏刷新/旋转）· RowWorker
 ├── src/graphics/               VectorDrawing · ProgressRings · LaneDrawing · JunctionOverlay · StatusWidgets
 ├── src/power/                  Battery · BatteryPolling · Shutdown
-├── resources/                  BrandLogos.h（658KB）· CameraIconPixels.h（253KB）· RiderSprites.h
+├── resources/                  BrandLogos.h（658KB）· CameraIconPixels.h（253KB）· HomeSprites.h
 └── 根目录若干 .h               BootAnimation · TrafficLightLab · AppleMediaClient · RasterBuildingCarry · 自测工具
 ```
 
@@ -464,8 +464,8 @@ RLE 数据：每字节 = 高 4 位(长度-1) + 低 4 位(颜色索引)
 
 ### 7.3 iOS 结构
 
-- SwiftUI，四栏（导航 / 轨迹 / 圆屏 / 我的），最低 iOS 15。
-- 对应模块：`NaviBridge.swift`(61KB)、`ContentView.swift`(53KB)、`MapFeeder.swift`(42KB)、`BleLink.swift`(37KB)、`AmapShare.swift`(35KB)、`WebMotor.swift`(33KB)、`MapGeo.swift`、`RasterProcessing.swift`。
+- SwiftUI，三栏（导航 / 设备 / 我的），最低 iOS 15；轨迹概览已并入导航页下半。
+- 对应模块：`NaviBridge.swift`、`ContentView.swift`、`MapFeeder.swift`、`BleLink.swift`、`AmapShare.swift`、`WebMotor.swift`、`MapGeo.swift`、`RasterProcessing.swift`。
 - 与安卓的差异：**无读秒**；UI 移植自 `coolcoolmanman-design/MotoNav`。
 - `MotoNavShare` 是分享扩展（从高德/地图 App 分享路线进来），签名时要一起签。
 

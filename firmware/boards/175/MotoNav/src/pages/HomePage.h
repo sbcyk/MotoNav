@@ -36,6 +36,10 @@ HomeClock homeClock;
 #define H_CARD    0x10A3   // 浮层卡片
 #define H_CARD_ED 0x39E7   // 浮层描边
 
+// v2.6 苔林车灯：暖米灯芯 + 外层光晕。底图那块本来是暗的，全靠加色叠出来。
+#define H_MOSS_LAMP 0xF6B5 // (240,215,168) #F0D7A8
+#define H_MOSS_CORE 0xFF9A // (255,243,214) #FFF3D6
+
 // ================= 构图 =================
 #define H_DUST_N     20        // 光尘数量（未坐火只用前一半）
 #define H_DUST_TOP_SIT   96    // 坐着时光尘上升行程（v2.3 从 150 压到 96：光别升那么高）
@@ -65,11 +69,14 @@ static inline float hHrsProgress(float t) {
 
 // ================= 素材 =================
 #include "../../resources/HomeSprites.h"
+#include "../../resources/HomeSpritesMoss.h"   // v2.6 苔林：单张底图 + 车灯几何
 
 // 整帧 / 局部都按源像素 2x 写画布，而 hCircleSpan 与 hPix 走显示坐标，
 // 两套圆内判定只有在“显示尺寸 = 源尺寸 × 2”时才等价，这里锁死。
 static_assert(LCD_WIDTH == SCENE_W * 2 && LCD_HEIGHT == SCENE_H * 2,
               "显示尺寸必须是源图的 2 倍");
+static_assert(LCD_WIDTH == MOSS_W * 2 && LCD_HEIGHT == MOSS_H * 2,
+              "苔林底图也得是显示尺寸的一半");
 
 // 加色叠加：光是加到画面上，不是盖掉背景；k = 0~16，越大越亮
 static inline uint16_t hadd(uint16_t p, uint16_t c, int k) {
@@ -426,8 +433,65 @@ static void hDrawInfo() {
   printCentered("TAP TO CLOSE", CX, 350, 1, 0x4208);
 }
 
+// ================= 苔林夜骑（v2.6）=================
+// 一张底图 + 固件画的灯，两态只差灯亮不亮。静态画面：没有粒子、没有过渡，
+// 也没有局部擦除——静置时一帧都不重画，只有状态或分钟变了才整帧来一次。
+static void hMossScene() {
+  uint16_t *fb = gfx->getFramebuffer();
+  if (!fb) { gfx->fillScreen(C_BLACK); return; }
+  for (int sy = 0; sy < MOSS_H; sy++) {
+    int x0, x1;
+    hScenePairSpan(sy, x0, x1);              // 圆内裁切和艾尔登共用一套
+    if (x0 >= x1) continue;
+    const uint8_t *row = MOSS_IDX + (size_t)sy * MOSS_W;
+    uint16_t *o0 = fb + (size_t)(sy * 2) * LCD_WIDTH + x0;
+    uint16_t *o1 = o0 + LCD_WIDTH;
+    for (int sx = x0 >> 1; sx < (x1 >> 1); sx++) {
+      const uint16_t c = MOSS_PAL[row[sx]];
+      o0[0] = c; o0[1] = c; o1[0] = c; o1[1] = c;
+      o0 += 2; o1 += 2;
+    }
+  }
+}
+
+// 车灯：参考图里车灯是**一个亮起来的灯罩**——实心亮盘 + 一圈很短的辉光，
+// 路面不铺光斑。别叠多层做大光晕，叠出来是一坨糊在车头的光球，不是灯。
+static void hMossLamp() {
+  hAddEllipse(MOSS_LAMP_X, MOSS_LAMP_Y, MOSS_GLOW_R, MOSS_GLOW_R, H_MOSS_LAMP, 4);
+  hAddEllipse(MOSS_LAMP_X, MOSS_LAMP_Y, MOSS_LAMP_R, MOSS_LAMP_R, H_MOSS_LAMP, 16);
+  hAddEllipse(MOSS_LAMP_X, MOSS_LAMP_Y, MOSS_LAMP_R - 3, MOSS_LAMP_R - 3, H_MOSS_CORE, 16);
+}
+
+static void hMossFull(unsigned long now) {
+  hT = (waitSt == WAIT_READY) ? 1.0f : 0.0f;   // 没有过渡：直接对齐当前状态
+  hMossScene();
+  if (hT >= 0.5f) hMossLamp();
+  drawHomeBand(now);
+  if (hInfoOn) hDrawInfo();
+}
+
+// 苔林静置：只在浮层超时 / 分钟变化 / 外部置脏时重画，其余一帧不动。
+static void hMossTick(unsigned long now) {
+  if (hInfoOn && now - hInfoAt >= 6000) {
+    hInfoOn = false;
+    catForce = true;
+    hFullNext = true;
+  } else if (hInfoOn && !catForce) {
+    return;                                  // 浮层开着：冻住背景，只等分钟变
+  }
+  const int64_t m = homeClock.minuteKey(now);
+  if (m != hBandMinute) { hBandMinute = m; hFullNext = true; catForce = true; }
+  if (!catForce && !hFullNext) return;
+  catForce = false;
+  hFullNext = false;
+  hMossFull(now);
+  needFlush = true;
+  frameIsMap = false;
+}
+
 // 整帧：画面 → 马粒子 → 赐福火光与光尘 → 信息带 → 浮层
 static void hDrawFull(unsigned long now) {
+  if (appearIdx == APPEAR_MOSS) { hMossFull(now); return; }   // v2.6 苔林走自己那条
   hScene();
   hHorseSparks(hHrsProgress(hT));          // 两端它自己会跳过，这里不再判一次
   hEffects(now, hBoost, hManProgress(hT));
@@ -452,7 +516,12 @@ void drawWaiting(int st) {
   //   3. 没在动且目标与屏上不同：朝目标开始走。
   // 人站 / 马在 与 hT 的关系只由 hManProgress / hHrsProgress 决定，反向走自然就是
   // “马先散、人后坐”。
-  if (hSnapOnce) {
+  if (appearIdx == APPEAR_MOSS) {                    // v2.6 苔林是静态图：直接落地，不播过渡
+    hSnapOnce = false;
+    hDir = 0;
+    hT = target;
+    hBoost = 1.0f;
+  } else if (hSnapOnce) {
     hSnapOnce = false;
     hDir = 0;
     hT = target;
@@ -462,7 +531,7 @@ void drawWaiting(int st) {
     hDir = (target > hT) ? 1 : -1;
     hTAt = millis();
   }
-  if (changed) {                                     // 换状态：赐福处闪一下
+  if (changed && appearIdx != APPEAR_MOSS) {          // 换状态：赐福处闪一下（苔林没有赐福，不置）
     hBoost = 1.6f;
     hBoostAt = millis();
   } else if (hDir == 0) {
@@ -519,6 +588,7 @@ void animateCat() {
     return;
   }
   const unsigned long now = millis();
+  if (appearIdx == APPEAR_MOSS) { hMossTick(now); return; }   // v2.6 苔林：静态，按需整帧
   if (hInfoOn && now - hInfoAt >= 6000) {
     hInfoOn = false;
     drawWaiting(waitSt);
