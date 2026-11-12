@@ -297,6 +297,17 @@ UI 是脏标记 + 按需重绘，不是固定帧率。项目里说的"帧率"指
 
 `COM4` 换成设备管理器里的实际串口。板子实测为 32MB Flash（`flash-id` 读回 GigaDevice `c8 4019`），2.0.0 起构建和分区表都按 32MB 来；从 16MB 旧固件升级只能整片刷。
 
+日常别手敲上面那行，用 `firmware/flash-dev.ps1`：自动找 Espressif 串口（`VID_303A`）、自动挑 `dist` 里最新的镜像、刷完依赖 esptool 的 hash 校验。
+
+```sh
+pwsh -File firmware/flash-dev.ps1            # 找串口 + 刷最新 app 镜像，保留 NVS
+pwsh -File firmware/flash-dev.ps1 -Build     # 先编再刷
+pwsh -File firmware/flash-dev.ps1 -DryRun    # 只打印命令，不碰硬件
+pwsh -File firmware/flash-dev.ps1 -Full      # 整片刷，清 NVS，救砖用
+```
+
+镜像比源码旧时脚本会警告（只比修改时间），所以改完代码记得带 `-Build`。
+
 每次出包后把 `dist/175/panel0/` 拷一份到本机的 `..\builds\<日期>-<分支>\`（仓库外）并生成 SHA256，换机器时可以不重编直接烧。
 
 编译偶发 `internal compiler error: in try_forward_edges, at cfgcleanup.cc:580`（xtensa GCC 的已知缺陷，和代码内容无关），重跑一次即可，不必改代码。
