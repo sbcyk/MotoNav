@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct MotoNavApp: App {
     @AppStorage("ui_appearance") private var appearance=0
+    /// 主题包编号。AppTheme 的颜色是计算属性、没有可观察源，靠这个 id 让整棵树换包后重建一次。
+    @AppStorage("appearance") private var packId=0
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
@@ -37,6 +39,7 @@ struct MotoNavApp: App {
         BleLink.shared.onNotify = { msg in
             let p = msg.split(separator: ",").map(String.init)
             if p.first == "BOOT", p.count >= 2, let id = Int(p[1]) { Settings.shared.bootReply(id); return }
+            if p.first == "TH", p.count >= 2, let n = Int(p[1]) { Settings.shared.packReply(n); return }
             if p.count >= 3, p[0] == "T", p[1] == "M" { MusicBridge.shared.handle(p[2]); return }
             if p.first == "T", p.count >= 2 {
                 switch p[1] {
@@ -55,6 +58,7 @@ struct MotoNavApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .id(packId)
                 .background(AmapCaptureSurface().frame(width: 1, height: 1))
                 .preferredColorScheme(AppearanceMode(rawValue:appearance)?.scheme)
                 .onReceive(NotificationCenter.default.publisher(for:UIApplication.willResignActiveNotification)){_ in

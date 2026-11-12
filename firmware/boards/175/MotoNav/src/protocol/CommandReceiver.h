@@ -224,6 +224,24 @@ void handleText(const String &m) {
     }
     return;
   }
+  if (m.startsWith("#TH,")) {                            // v2.5 主题包：0 艾尔登 / 1 苔林夜骑
+    int a = m.substring(4).toInt();
+    a = constrain(a, 0, APPEAR_N - 1);
+    if (a != appearIdx) {
+      appearIdx = a;
+      Preferences pr;
+      pr.begin("motonav", false);
+      bool saved = pr.putInt("appear", a) == sizeof(int32_t);
+      pr.end();
+      Serial.printf("APPEAR %d saved=%d\n", a, saved);
+      // 只在首页真的在显示时才立刻重画，和 #WL 一样：别在导航页硬改 frameIsMap
+      if (onWaitScreen && page == 0 && !inNav) {
+        catForce = true; hFullNext = true; needFlush = true; frameIsMap = false;
+      }
+    }
+    pendingAppearStatus = String("TH,") + appearIdx;
+    return;
+  }
   if (m.startsWith("#t,")) {                             // v2.9 地图配色主题
     int t = m.substring(3).toInt();
     if (t >= 0 && t < THEME_N) {
@@ -238,7 +256,7 @@ void handleText(const String &m) {
         }
       }
       themeIdx = t; navDirty = true;
-    }   // v7.8.11 0~11
+    }   // v7.8.11 0~12
     return;
   }
   if (m.startsWith("#Q,")) { curveOn = m.substring(3).toInt() != 0; navDirty = true; return; }   // v6.2 弯道上色

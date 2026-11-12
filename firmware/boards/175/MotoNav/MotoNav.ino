@@ -66,8 +66,10 @@ void setup() {
     bootBrand = BootAnimation::valid(pr.getInt("bootbrand", 0));
     hidMusicMode = pr.getBool("mediahid", false);
     fastFlushOn = pr.getBool("fastf", true);
+    appearIdx = pr.getInt("appear", APPEAR_ELDEN);                  // v2.5 主题包
     pr.end();
     if (qspiMHz != 40 && qspiMHz != 60 && qspiMHz != 80) qspiMHz = 40;
+    if (appearIdx < 0 || appearIdx >= APPEAR_N) appearIdx = APPEAR_ELDEN;
   }
   if (!gfx->begin(qspiMHz * 1000000)) Serial.println("gfx->begin() failed!");
   panel->setBrightness(200);

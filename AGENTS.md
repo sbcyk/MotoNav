@@ -145,6 +145,21 @@ firmware/
 | `src/pages/PairingPage.h` | 配对页 |
 | `src/pages/PageNavigation.h` | 换页调度 |
 
+### 主题包（v2.5）
+
+一套**包**同时决定 App 强调色和默认地图配色；**地图风格**是另一层，决定地图怎么画（雷达、龙珠雷达那几套连底图都没有，两者不能混成一个概念）。
+
+| 编号 | 包 | App 强调色（浅/深） | 默认地图风格 |
+|---|---|---|---|
+| 0 | 艾尔登 | 暖金 `#8A5E1E` / `#E0B25A` | 1 罪恶都市 |
+| 1 | 苔林夜骑 | 低饱和绿 `#2F7D5A` / `#6FBF97` | 12 苔林（v2.5 新增，带夜间表） |
+
+- 包编号存 NVS 键 `appear`，`#TH,N` 写入；认证通过后回 `TH,<n>` 让手机确认落地。只有在首页可见时才立刻重画，条件与 `#WL` 一致（别在导航页硬改 `frameIsMap`）
+- 地图仍是 `#t,N` + `themeIdx`，包不直接改它：iOS 换包时**顺手**把配套风格一起发出去，避免停在「苔林包 + 粉紫地图」的半套状态
+- 色板落在 `ios/MotoNav/AppTheme.swift` 的 `ThemePack`（`accent` + `palette`）。`AppTheme` 的语义色全部改成了 `static var` 计算属性——写成 `static let` 会在第一次访问时把颜色定死，换包不生效
+- 换包要重建整棵视图树：`MotoNavApp` 用 `@AppStorage("appearance")` 当 `.id()`，因为颜色是计算属性、没有可观察源
+- **首页画面还没做**：苔林包当前复用艾尔登的 `HomeSprites`，信息带环与文字仍是暖金。要换画面得先有第二套 233×233 8bpp 两态素材，见 `docs/需求清单.md`
+
 ### 主循环（`MotoNav.ino`，每轮）
 
 1. 查连接状态，断开显示 `LINK LOST` / `WAIT_NOLINK`
@@ -250,7 +265,7 @@ UI 是脏标记 + 按需重绘，不是固定帧率。项目里说的"帧率"指
 | 确认 | `K,type,id`；重复末包只再确认一次 |
 | 大块类型 | 1 矢量地图 / 2 路线（增量坐标）/ 3 栅格位图 / 4 ghost 原路线 |
 | 文字位图 | `'B'` 帧，13 栏 |
-| 文本指令 | 约 50 条，全部 `#` 前缀（唯一例外是"方向,距离"），未知 `#` 指令安全忽略 |
+| 文本指令 | 约 50 条，全部 `#` 前缀（唯一例外是"方向,距离"），未知 `#` 指令安全忽略；`#TH,0/1` 是主题包（见「主题包」），回执 `TH,<n>` |
 | 音乐 | HID over GATT + Apple AMS，键码 上一首 `0x00B6` / 播放暂停 `0x00CD` / 下一首 `0x00B5` |
 
 要改这些数字，手机端和固件必须同时改，单改一端直接断连。
@@ -322,7 +337,7 @@ esp32:esp32:esp32s3:FlashSize=32M,PartitionScheme=app5M_fat24M_32MB,PSRAM=opi,CD
 
 - 分区表只决定代码和文件写入的地址与上限，不改变 Flash 模式/频率、PSRAM 模式、CPU 频率与 cache 配置，因此与运行速度无关。
 - 切换方案必须整片刷（`--erase-all`），NVS 位于 `0x9000`，其余区域地址随方案变化，设置与手机配对会清空。
-- 当前固件占用 app0 1,403,903 字节（镜像，v2.3.0），约 4.50MB 方案的 29%、12.50MB 方案的 11%。
+- 当前固件占用 app0 1,406,839 字节（镜像，v2.5.0），约 4.50MB 方案的 29%、12.50MB 方案的 12%。
 - 当前固件未挂载任何文件系统：源码中无 `FATFS`/`FFat`/`SPIFFS` 引用，上述 ffat / spiffs 分区目前均为未使用空间。
 - `max_app_32MB.csv`（单槽 31.87MB，无 OTA、无文件系统）存在于 `tools/partitions/`，但不是菜单项，要使用需自定义分区表。
 
@@ -364,7 +379,7 @@ iOS 出包：`Run workflow` → 选分支（build 号由 run 号自动生成，�
 4. `MotoNavIpcStackGuard` 不能删
 5. 版本串保持 `v` 前缀，`build.py` 靠它抓版本
 6. 改开屏品牌 ID，同步手机端 `BootBrand.swift` / `BootBrand.kt`
-7. NVS 键名（`qspi` / `rot` / `rotd` / `bootbrand` / `mediahid` / `fastf`，命名空间 `motonav`）改名会让老设备设置丢失
+7. NVS 键名（`qspi` / `rot` / `rotd` / `bootbrand` / `mediahid` / `fastf` / `appear`，命名空间 `motonav`）改名会让老设备设置丢失
 8. 协议数字（485 / 517 / 15 / 13 栏）两端成对改
 9. iOS 主 App 和 `MotoNavShare.appex` 的版本号必须完全一致，否则 `build-ios-ipa.sh` 直接失败
 10. 烧 `0x0` 会 `--erase-all`，配对信息全丢，只有救砖才用

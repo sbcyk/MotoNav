@@ -47,8 +47,16 @@ struct ContentView: View {
     @State private var showShareVerification=false
     @State private var cruiseNote = ""
 
-    static let bg=AppTheme.bg,card=AppTheme.card,stroke=AppTheme.stroke
-    static let pink=AppTheme.accent,cyan=AppTheme.accent,sub=AppTheme.sub
+    /// 这三个和 pink/cyan 一样必须算出来：它们跟着主题包变，
+    /// 写成 static let 会在第一次访问时定死，换包后背景不跟着换。
+    static var bg:Color{AppTheme.bg}
+    static var card:Color{AppTheme.card}
+    static var stroke:Color{AppTheme.stroke}
+    /// pink / cyan 是历史名字，都指当前主题包的强调色。
+    /// 这里必须是计算属性：写成 static let 会在第一次访问时把颜色定死，换包后不跟着变。
+    static var pink:Color{AppTheme.accent}
+    static var cyan:Color{AppTheme.accent}
+    static var sub:Color{AppTheme.sub}
 
     var body:some View {
         GeometryReader { geo in
@@ -1034,9 +1042,27 @@ struct ContentView: View {
     /// 屏幕显示按功能拆卡：导航信息 / 地图与路线 / 夜间与弯道。
     private var displayCard: some View {
         VStack(spacing: 16) {
+            appearanceCard
             navigationInfoCard
             mapDisplayCard
             nightCurveCard
+        }
+    }
+
+    /// 主题包：换包会连强调色和地图风格一起换，所以放在圆屏显示的最前面
+    private var appearanceCard: some View {
+        CardView {
+            Text("主题包").font(.headline).foregroundColor(AppTheme.text)
+            Picker("主题包", selection: $settings.appearance) {
+                ForEach(ThemePack.allCases, id: \.rawValue) { p in
+                    Text(p.name).tag(p.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            if let p = ThemePack(rawValue: settings.appearance) {
+                Text(p.subtitle).font(.footnote).foregroundColor(AppTheme.sub)
+            }
+            Text(settings.packStatus).font(.caption).foregroundColor(AppTheme.sub)
         }
     }
 

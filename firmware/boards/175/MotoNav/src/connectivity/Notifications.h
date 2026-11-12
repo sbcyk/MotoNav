@@ -13,9 +13,11 @@ void sendPendingAck() {
     pendingHidStatus = String("HID,") + (hidMusicMode ? 1 : 0) + "," + (hidMediaReady() ? 1 : 0);
     appleMedia.resend();
     pendingLyricsStatus = String("ML,") + (musicLyrics ? 1 : 0);
+    pendingAppearStatus = String("TH,") + appearIdx;            // v2.5 主题包状态
     pendingMediaStatus = String("AMC,") + appleMedia.controlMask();
   }
   if (pendingLyricsStatus.length()) { txChar->setValue((uint8_t *)pendingLyricsStatus.c_str(), pendingLyricsStatus.length()); txChar->notify(); pendingLyricsStatus = ""; }
+  if (pendingAppearStatus.length()) { txChar->setValue((uint8_t *)pendingAppearStatus.c_str(), pendingAppearStatus.length()); txChar->notify(); pendingAppearStatus = ""; }
   if (pendingMediaStatus.length()) { txChar->setValue((uint8_t *)pendingMediaStatus.c_str(), pendingMediaStatus.length()); txChar->notify(); pendingMediaStatus = ""; }
   uint8_t amsFrame[139]; size_t amsSize = 0;
   if (appleMedia.nextFrame(amsFrame, amsSize, millis())) { txChar->setValue(amsFrame, amsSize); txChar->notify(); }

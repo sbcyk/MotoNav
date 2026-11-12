@@ -22,63 +22,60 @@ extension Color {
 
 /// 语义色板：界面里只用这些名字，不直接写死颜色
 enum AppTheme {
-    // MARK: 页面（冷淡科技 · 中性灰）
+    // MARK: 页面（跟随主题包：艾尔登中性灰 / 苔林低饱和绿）
+    /// 所有语义色都从当前包的色板取。写成 static var 而不是 static let：
+    /// 换包后要跟着变，存成 let 会在第一次访问时就把颜色定死。
+    private static var pal: ThemePalette { pack.palette }
     /// 页面背景
-    static let bg = Color.dynamic(
-        light: UIColor(red: 0.953, green: 0.953, blue: 0.973, alpha: 1),   // #F3F3F8
-        dark:  UIColor(red: 0.000, green: 0.000, blue: 0.000, alpha: 1))   // #000000
+    static var bg: Color { Color.dynamic(light: UIColor(hex: pal.bg), dark: UIColor(hex: pal.bgDark)) }
     /// 卡片（内容层：保持实色，玻璃只用在控制层）
-    static let card = Color.dynamic(
-        light: UIColor(red: 1, green: 1, blue: 1, alpha: 1),               // #FFFFFF
-        dark:  UIColor(red: 0.110, green: 0.110, blue: 0.118, alpha: 1))   // #1C1C1E
+    static var card: Color { Color.dynamic(light: UIColor(hex: pal.card), dark: UIColor(hex: pal.cardDark)) }
     /// 卡片内嵌的浅底（输入框、路线卡片的凹槽）
-    static let sunken = Color.dynamic(
-        light: UIColor(red: 0.949, green: 0.949, blue: 0.969, alpha: 1),   // #F2F2F7
-        dark:  UIColor(red: 0.173, green: 0.173, blue: 0.180, alpha: 1))   // #2C2C2E
+    static var sunken: Color { Color.dynamic(light: UIColor(hex: pal.sunken), dark: UIColor(hex: pal.sunkenDark)) }
     /// 描边
-    static let stroke = Color.dynamic(
-        light: UIColor(red: 0.780, green: 0.780, blue: 0.800, alpha: 1),   // #C7C7CC
-        dark:  UIColor(red: 0.235, green: 0.235, blue: 0.263, alpha: 1))   // #3C3C43
+    static var stroke: Color { Color.dynamic(light: UIColor(hex: pal.stroke), dark: UIColor(hex: pal.strokeDark)) }
     /// Secondary 按钮 / 未选 chip 底
-    static let secondaryFill = Color.dynamic(
-        light: UIColor(red: 0.898, green: 0.898, blue: 0.918, alpha: 1),   // #E5E5EA
-        dark:  UIColor(red: 0.227, green: 0.227, blue: 0.235, alpha: 1))   // #3A3A3C
+    static var secondaryFill: Color { Color.dynamic(light: UIColor(hex: pal.fill), dark: UIColor(hex: pal.fillDark)) }
 
     // MARK: 文字
     /// 主文字
-    static let text = Color.dynamic(
-        light: UIColor(red: 0.000, green: 0.000, blue: 0.000, alpha: 1),   // #000000
-        dark:  UIColor(red: 1.000, green: 1.000, blue: 1.000, alpha: 1))   // #FFFFFF
-    /// 次要文字（户外可读：浅色加深到系统灰 #636366，深色提亮）
-    static let sub = Color.dynamic(
-        light: UIColor(red: 0.388, green: 0.388, blue: 0.400, alpha: 1),   // #636366
-        dark:  UIColor(red: 0.620, green: 0.620, blue: 0.640, alpha: 1))   // #9E9EA3
+    static var text: Color { Color.dynamic(light: UIColor(hex: pal.text), dark: UIColor(hex: pal.textDark)) }
+    /// 次要文字（户外可读：浅色加深，深色提亮）
+    static var sub: Color { Color.dynamic(light: UIColor(hex: pal.sub), dark: UIColor(hex: pal.subDark)) }
     /// 导航条选中软底
-    static let selCapsule = Color.dynamic(
-        light: UIColor(red: 0.000, green: 0.478, blue: 1.000, alpha: 0.12),
-        dark:  UIColor(red: 0.039, green: 0.518, blue: 1.000, alpha: 0.18))
+    static var selCapsule: Color {
+        let a = pack.accent
+        return Color.dynamic(light: UIColor(hex: a.light, alpha: 0.12),
+                             dark: UIColor(hex: a.dark, alpha: 0.18))
+    }
 
-    // MARK: 强调色（单一系统蓝；pink/cyan 保留别名，兼容旧引用）
-    /// 系统蓝（主强调）
-    static let accent = Color.dynamic(
-        light: UIColor(red: 0.000, green: 0.478, blue: 1.000, alpha: 1),   // #007AFF
-        dark:  UIColor(red: 0.039, green: 0.518, blue: 1.000, alpha: 1))   // #0A84FF
+    // MARK: 强调色（跟随主题包：艾尔登暖金 / 苔林绿）
+    /// 当前主题包。定义在文件末尾，语义只有一条：一套包同时决定 App 强调色、首页画面和默认地图配色。
+    static var pack: ThemePack { ThemePack(rawValue: Settings.shared.appearance) ?? .elden }
+    /// 主强调色
+    static var accent: Color {
+        let a = pack.accent
+        return Color.dynamic(light: UIColor(hex: a.light), dark: UIColor(hex: a.dark))
+    }
     /// 选中 chip 淡底
-    static let accentSoft = Color.dynamic(
-        light: UIColor(red: 0.000, green: 0.478, blue: 1.000, alpha: 0.14),
-        dark:  UIColor(red: 0.039, green: 0.518, blue: 1.000, alpha: 0.22))
+    static var accentSoft: Color {
+        let a = pack.accent
+        return Color.dynamic(light: UIColor(hex: a.light, alpha: 0.14),
+                             dark: UIColor(hex: a.dark, alpha: 0.22))
+    }
 
-    /// 历史别名 → 系统蓝（不再是粉）
-    static let pink = accent
-    /// 历史别名 → 系统蓝（次要强调也统一，忌青/粉并置）
-    static let cyan = accent
+    /// 历史别名 → 强调色（旧代码里 pink / cyan 都指它）
+    static var pink: Color { accent }
+    /// 历史别名 → 强调色
+    static var cyan: Color { accent }
 
-    // MARK: Tab 选中态：四 Tab 同一系统蓝
-    static let tabAccents: [Color] = [accent, accent, accent, accent]
+    // MARK: Tab 选中态：四 Tab 同一强调色
+    static var tabAccents: [Color] { [accent, accent, accent, accent] }
 
-    /// 标题（冷淡科技：实色字重，无粉青渐变）
-    static let titleGradient = LinearGradient(
-        colors: [text, text], startPoint: .leading, endPoint: .trailing)
+    /// 标题（实色字重，不做渐变；必须是计算属性，text 会随包变）
+    static var titleGradient: LinearGradient {
+        LinearGradient(colors: [text, text], startPoint: .leading, endPoint: .trailing)
+    }
 
     // MARK: 状态色（系统语义）
     static let green = Color.dynamic(
@@ -307,5 +304,90 @@ struct BatteryGauge: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(percent.map { "电量 \($0)%" + (charging ? "，充电中" : "") } ?? "电量未知")
+    }
+}
+
+// MARK: - 主题包
+
+/// 一套包的界面语义色。每个字段一对：浅色 / 深色。
+struct ThemePalette {
+    let bg: UInt32, bgDark: UInt32
+    let card: UInt32, cardDark: UInt32
+    let sunken: UInt32, sunkenDark: UInt32
+    let stroke: UInt32, strokeDark: UInt32
+    let fill: UInt32, fillDark: UInt32
+    let text: UInt32, textDark: UInt32
+    let sub: UInt32, subDark: UInt32
+}
+
+/// 主题包：一套包 = App 强调色 + 首页画面 + 默认地图配色。
+/// 编号写进手机偏好和圆屏 NVS，**只能追加、不能重排**，否则老设备会认成别的包。
+enum ThemePack: Int, CaseIterable {
+    case elden = 0
+    case moss = 1
+
+    var name: String {
+        switch self {
+        case .elden: return "艾尔登"
+        case .moss:  return "苔林夜骑"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .elden: return "暖金 · 配罪恶都市地图"
+        case .moss:  return "低饱和绿 · 配苔林地图"
+        }
+    }
+
+    /// 换包时配套的地图风格编号（对应固件 THEMES 的下标）
+    var defaultMapTheme: Int {
+        switch self {
+        case .elden: return 1
+        case .moss:  return 12
+        }
+    }
+
+    /// 强调色：浅色 / 深色。艾尔登的浅色必须压到 #8A5E1E，
+    /// 亮金 #C08A2E 放在 #F3F3F8 底上只有 2.8:1，看不清。
+    var accent: (light: UInt32, dark: UInt32) {
+        switch self {
+        case .elden: return (0x8A5E1E, 0xE0B25A)
+        case .moss:  return (0x2F7D5A, 0x6FBF97)
+        }
+    }
+
+    /// 界面语义色板
+    var palette: ThemePalette {
+        switch self {
+        case .elden:
+            return ThemePalette(
+                bg: 0xF3F3F8, bgDark: 0x000000,
+                card: 0xFFFFFF, cardDark: 0x1C1C1E,
+                sunken: 0xF2F2F7, sunkenDark: 0x2C2C2E,
+                stroke: 0xC7C7CC, strokeDark: 0x3C3C43,
+                fill: 0xE5E5EA, fillDark: 0x3A3A3C,
+                text: 0x000000, textDark: 0xFFFFFF,
+                sub: 0x636366, subDark: 0x9E9EA3)
+        case .moss:
+            return ThemePalette(
+                bg: 0xF4F7F4, bgDark: 0x0D1310,
+                card: 0xFFFFFF, cardDark: 0x161E1A,
+                sunken: 0xEDF2EE, sunkenDark: 0x1E2823,
+                stroke: 0xD3DCD6, strokeDark: 0x2A3831,
+                fill: 0xE4EBE6, fillDark: 0x22302A,
+                text: 0x17211B, textDark: 0xE9EFEA,
+                sub: 0x5B6B61, subDark: 0x8C9C92)
+        }
+    }
+}
+
+extension UIColor {
+    /// 0xRRGGBB + 不透明度
+    convenience init(hex: UInt32, alpha: CGFloat = 1) {
+        self.init(red: CGFloat((hex >> 16) & 0xFF) / 255,
+                  green: CGFloat((hex >> 8) & 0xFF) / 255,
+                  blue: CGFloat(hex & 0xFF) / 255,
+                  alpha: alpha)
     }
 }

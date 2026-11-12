@@ -8,10 +8,11 @@ final class Settings: ObservableObject {
     private let ud = UserDefaults.standard
 
     /// 风格编号（和固件一样）；列表顺序
-    static let themeOrder = [1, 0, 5, 11]
+    static let themeOrder = [1, 12, 0, 5, 11]
     static func themeName(_ t: Int) -> String {
         switch t {
         case 11: return "龙珠雷达"
+        case 12: return "苔林"
         case 0: return "原版"; case 2: return "GTA5"; case 3: return "赛博霓虹"; case 4: return "复古纸地图"
         case 5: return "极简黑白"; case 6: return "蓝图"; case 7: return "掌机像素"; case 8: return "雷达"
         case 9: return "寻宝罗盘"; case 10: return "卫星图"; default: return "罪恶都市"
@@ -21,6 +22,7 @@ final class Settings: ObservableObject {
     static func themeDesc(_ t: Int) -> String {
         switch t {
         case 11: return "绿色雷达、路线与目标；不下载底图"
+        case 12: return "低饱和绿地面与苔绿道路，亮绿路线；配“苔林夜骑”主题包"
         case 0: return "高德默认底图与标注，按圆屏16色传输"
         case 2: return "深色地面、浅色道路、紫色路线"
         case 3: return "黑底青色道路、品红路线，夜里最酷"
@@ -46,6 +48,26 @@ final class Settings: ObservableObject {
     }
     func bootReply(_ id: Int) {
         bootStatus = id == bootBrand ? "已保存，下次开机生效" : "保存失败，请重新选择"
+    }
+
+    /// 主题包：一套包 = 首页画面 + App 强调色 + 默认地图配色。
+    /// 换包时把配套的地图风格一起改，否则会停在「苔林首页 + 粉紫地图」这种半套状态。
+    /// 重选同一个包不联动：用户在包里手改过地图风格，不该被一次重选悄悄覆盖回去。
+    @Published var appearance: Int {
+        didSet {
+            ud.set(appearance, forKey: "appearance")
+            BleLink.shared.send("#TH,\(appearance)")
+            packStatus = "等待圆屏确认"
+            guard appearance != oldValue else { return }
+            let want = ThemePack(rawValue: appearance)?.defaultMapTheme ?? 1
+            if theme != want { theme = want }
+        }
+    }
+
+    /// 圆屏回执：固件收到 #TH 后回 "TH,<n>"，用来确认切包真的落地
+    @Published var packStatus = "连接圆屏后自动同步"
+    func packReply(_ n: Int) {
+        packStatus = n == appearance ? "已同步到圆屏" : "圆屏未接受，请重新选择"
     }
 
     @Published var theme: Int {
@@ -163,7 +185,8 @@ final class Settings: ObservableObject {
 
     private init() {
         amapKey = ud.string(forKey: "key_amap") ?? ""
-        theme = [1, 0, 5, 11].contains(ud.integer(forKey: "map_theme")) && ud.object(forKey: "map_theme") != nil ? ud.integer(forKey: "map_theme") : 1
+        theme = Settings.themeOrder.contains(ud.integer(forKey: "map_theme")) && ud.object(forKey: "map_theme") != nil ? ud.integer(forKey: "map_theme") : 1
+        appearance = ThemePack(rawValue: ud.object(forKey: "appearance") as? Int ?? 0)?.rawValue ?? ThemePack.elden.rawValue
         rotationDeg = ud.object(forKey: "screen_rot_deg") as? Int
             ?? ((ud.object(forKey: "screen_rot") as? Int ?? 0) & 3) * 90   // 老版本只存了 0~3 档
         brightness = ud.object(forKey: "bright") as? Double ?? 200
@@ -206,6 +229,7 @@ final class Settings: ObservableObject {
         MusicBridge.shared.syncMode()
         MusicBridge.shared.refresh(force: true)
         applyDayNight(force: true)                      // 亮度、夜间配色
+        b.send("#TH,\(appearance)")
         b.send(MapStyleTransfer.command(theme))
         syncBuildingContinuity()
         b.send(rotationMsg)

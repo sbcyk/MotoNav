@@ -181,6 +181,14 @@ HidMediaKeys::Pulses hidPulses;
 unsigned long hidTapAt = 0;
 void hidMediaTick();
 bool hidMediaReady();
+// v2.5 主题包：一套包 = 首页画面 + App 强调色 + 默认地图配色。
+// 名字用 appear 不用 theme：themeIdx 已经被“地图怎么画”占用，两者不是一回事——
+// 雷达、龙珠雷达那几套根本没有底图，它们只是风格，不是包。
+#define APPEAR_ELDEN 0                         // 艾尔登：暖金，配地图 1 罪恶都市
+#define APPEAR_MOSS  1                         // 苔林夜骑：低饱和绿，配地图 12 苔林
+#define APPEAR_N     2
+int appearIdx = APPEAR_ELDEN;                  // #TH,0/1；持久化在 NVS 键 appear
+String pendingAppearStatus;                    // 回给手机的 TH,<n>，手机用它校验切包是否落地
 bool wxDirty = false;                 // v5.3 天气页要重画
 
 // ================= v6.5 蓝牙配对验证 =================
