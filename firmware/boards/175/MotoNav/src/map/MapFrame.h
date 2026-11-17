@@ -39,8 +39,10 @@ void drawMapFrame() {
   bool vecOK = !dragon && mapValid && mapFrame == posFrame;
   bool rasOK = !dragon && rasterValid && rasterFrame == posFrame;
   bool useRaster = rasOK && (!vecOK || rasterAt >= vectorAt);   // v2.5 两种都有时用最新收到的
-  // 图片地图每像素 2 米，放太大会显得粗糙，所以最大放大倍数小一些
-  float targetS = constrain(0.85f - posKmh * 0.006f, 0.38f, useRaster ? 0.6f : 0.85f);
+  // 图片地图 1.5 米/像素：0.85 时 1 个栅格像素 ≈ 1.28 个屏像素，再往上放就是插值糊了。
+  // 缩小下限从 0.38 提到 0.5：底图半边只有 900 米，0.38 时视距要 768 米，
+  // 车一离开中心（手机 300 米就换块）顶端就露底，高速上会一直闪空白。
+  float targetS = constrain(0.85f - posKmh * 0.006f, useRaster ? 0.50f : 0.38f, 0.85f);
   viewScale += (targetS - viewScale) * (1.0f - expf(-vdt / 1.2f));   // v3.7 缩放也按时间平滑
   float sc = viewScale, hs = viewHdg * PI / 180, cs = cosf(hs), sn = sinf(hs);
   float viewR = (CX + (MAP_PY - CX) + 30) / sc;

@@ -37,7 +37,7 @@ const MapTheme THEMES[THEME_N] = {
   {0x0863, 0x29AA, 0x08C4, 0x08A6, 0xFD80, 0x3940, 0xFF35, 0xFD80, 0x6AC7, 0x18A1},   // 9 寻宝罗盘
   {0x5B08, 0x8C50, 0x3285, 0x29E8, 0x073F, 0x0188, 0xFFFF, 0xF9E7, 0xA514, 0x3186},   // 10 卫星图（照片没到时的替代色）
   {DragonRadar::DayBackground, 0, 0, 0, 0xFFF0, 0x0941, 0xFFFF, 0xFDC4, 0x7D69, 0x1283}, // 11 龙珠雷达（无底图）
-  {0x08C2, 0x3AC9, 0x1984, 0x19A6, 0x7ED5, 0xC77B, 0xEF9D, 0xF6B5, 0x4B4B, 0x2A06},   // 12 苔林：低饱和绿地面、苔绿道路、亮绿路线（v2.5 主题包）
+  {0x1103, 0x7CF0, 0x2245, 0x222A, 0x7ED5, 0xC77B, 0xEF9D, 0xF6B5, 0x4B4B, 0x2A06},   // 12 苔林：地面 #101F17、绿地 #22482D、道路 #7A9C82（v2.7 重调，原来三色亮度太近，路淹在地面里）
 };
 // v3.0 夜间配色：地面压暗、道路变成浅色线条，路线保持鲜艳（晚上一眼就能看到）
 const MapTheme THEMES_NIGHT[THEME_N] = {
@@ -53,7 +53,7 @@ const MapTheme THEMES_NIGHT[THEME_N] = {
   {0x0863, 0x29AA, 0x08C4, 0x08A6, 0xFD80, 0x3940, 0xFF35, 0xFD80, 0x6AC7, 0x18A1},   // 9 寻宝罗盘·夜
   {0x5B08, 0x8C50, 0x3285, 0x29E8, 0x073F, 0x0188, 0xFFFF, 0xF9E7, 0xA514, 0x3186},   // 10 卫星图·夜（照片压暗）
   {DragonRadar::NightBackground, 0, 0, 0, 0xFFF0, 0x0941, 0xFFFF, 0xFDC4, 0x7D69, 0x1283}, // 11 龙珠雷达（无底图）
-  {0x0881, 0x2A26, 0x1123, 0x1125, 0x6E54, 0xAEF8, 0xDF5C, 0xEE54, 0x3A68, 0x2185},   // 12 苔林·夜：地面再压一档，路线保持亮绿
+  {0x08A2, 0x538B, 0x1984, 0x1187, 0x6E54, 0xAEF8, 0xDF5C, 0xEE54, 0x3A68, 0x2185},   // 12 苔林·夜：地面压暗的同时把道路提一档（v2.7，和白天表一起改）
 };
 int themeIdx = 1;                                  // 默认罪恶都市
 bool curveOn = false;                              // v6.1 弯道急缓上色
@@ -112,7 +112,7 @@ bool rasterBackValid = false;
 int rasterFrame = -1;
 int32_t rasX0 = 0, rasY0 = 0;           // 左上角（米）
 int rasW = 0, rasH = 0;
-float rasMpp = 2.0f;                    // 每像素多少米
+float rasMpp = 1.5f;                    // 每像素多少米（真值由包体头部的 mmPerPx 覆盖）
 unsigned long rasterAt = 0, vectorAt = 0;
 bool pendingBuildingCapability = false;
 String pendingAck = "";     // 待发给手机的确认

@@ -61,7 +61,7 @@ final class RouteOfflineMaps {
         guard !token.isCancelled, !busy else { return }
         let count = ready.filter { $0 }.count, baseCount = baseReady.filter { $0 }.count
         if count == ready.count {
-            onStatus("沿线底图已全部离线：\(count)/\(ready.count) 块（2 米/像素）")
+            onStatus("沿线底图已全部离线：\(count)/\(ready.count) 块（1.5 米/像素）")
             timer?.invalidate(); timer = nil; return
         }
         guard UIApplication.shared.applicationState == .active else {

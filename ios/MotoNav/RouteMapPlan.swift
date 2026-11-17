@@ -5,13 +5,15 @@ enum MapCoveragePolicy {
     /// Existing building packets remain usable; extra screenshot passes yield at highway speeds.
     static func mayCaptureBuildings(kmh:Int)->Bool {kmh<60}
     static func radius(kmh: Int) -> Double {
-        let scale = min(0.6, max(0.38, 0.85 - Double(max(0, kmh)) * 0.006))
+        // 上限要和固件 MapFrame.h 的 targetS 一致（栅格 0.5~0.85）；底图 1.5 米/像素时 0.85 约等于 1 屏像素 1 栅格像素。
+        // 下限 0.5 同样是照固件抄的：900 米的半边装不下 0.38 时的 768 米视距。
+        let scale = min(0.85, max(0.5, 0.85 - Double(max(0, kmh)) * 0.006))
         return 292 / scale
     }
-    static func covers(x: Double, y: Double, cx: Double, cy: Double, kmh: Int, half: Double = 1200, margin: Double = 0) -> Bool {
+    static func covers(x: Double, y: Double, cx: Double, cy: Double, kmh: Int, half: Double = RasterPacket.halfMeters, margin: Double = 0) -> Bool {
         max(abs(x - cx), abs(y - cy)) + radius(kmh: kmh) + margin <= half
     }
-    static func lookahead(kmh: Int, half: Double = 1200, preferred: Double = 450) -> Double {
+    static func lookahead(kmh: Int, half: Double = RasterPacket.halfMeters, preferred: Double = 450) -> Double {
         max(0, min(preferred, half - radius(kmh: kmh) - 180))
     }
     /// Time until the current raster ceases to cover the viewport. Follow the
@@ -34,7 +36,7 @@ enum MapCoveragePolicy {
                 px=x+sin(radians)*delta;py=y+cos(radians)*delta
             } else {
                 // With no trustworthy trajectory, use the closest edge.
-                if max(abs(x-cx),abs(y-cy))+delta+radius(kmh:speed)+50>1200 {return max(0,seconds-0.5)}
+                if max(abs(x-cx),abs(y-cy))+delta+radius(kmh:speed)+50>RasterPacket.halfMeters {return max(0,seconds-0.5)}
                 continue
             }
             if !covers(x:px,y:py,cx:cx,cy:cy,kmh:speed,margin:50) {return max(0,seconds-0.5)}
@@ -53,10 +55,10 @@ enum MapCoveragePolicy {
     }
 }
 
-/// Samples the actual route every 600 m, with 800 m lookahead and overlapping 2.4 km blocks.
+/// Samples the actual route every 600 m, with 800 m lookahead and overlapping 1.8 km blocks.
 struct RouteMapPlan {
     struct Node: Equatable { let x: Double, y: Double, distance: Double }
-    static let step = 600.0, half = 1200.0
+    static let step = 600.0, half = RasterPacket.halfMeters
     let points: [(x: Double, y: Double)], cumulative: [Double], length: Double
     private(set) var nodes: [Node] = []
     init(_ points: [(x: Double, y: Double)]) throws {
@@ -143,7 +145,7 @@ final class RouteMapCache {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = attrs[.size] as? NSNumber, (17...480000).contains(size.intValue),
               let data = try? Data(contentsOf: url), RasterPacket.isBuilding(data) == buildings,
-              RasterPacket.valid(data, frame: frame.id, x: Int(node.x - 1200), y: Int(node.y + 1200)),
+              RasterPacket.valid(data, frame: frame.id, x: Int(node.x - RasterPacket.halfMeters), y: Int(node.y + RasterPacket.halfMeters)),
               MapStyleTransfer.matches(data,style:style),
               style != 1 || RasterPacket.hasMapContent(data) else { return nil }
         remember(node,frame:frame,source:source,style:style)
@@ -166,7 +168,7 @@ final class RouteMapCache {
         return nil
     }
     func store(_ data: Data, frame: MapGeo.Frame, source: Int, node: RouteMapPlan.Node, style: Int = 1) throws {
-        guard RasterPacket.valid(data, frame: frame.id, x: Int(node.x - 1200), y: Int(node.y + 1200)),
+        guard RasterPacket.valid(data, frame: frame.id, x: Int(node.x - RasterPacket.halfMeters), y: Int(node.y + RasterPacket.halfMeters)),
               MapStyleTransfer.matches(data,style:style),
               style != 1 || RasterPacket.hasMapContent(data) else { throw MapProcessingError.invalid("离线底图校验失败") }
         guard style != 1 || RasterPacket.hasMapContent(data) else {throw MapProcessingError.invalid("空白底图未写入缓存")}
@@ -222,7 +224,7 @@ struct MapHandoffBuffer {
     }
     private(set) var pending:Packet?
     static func mayPrepare(x:Double,y:Double,cx:Double,cy:Double)->Bool {
-        max(abs(x-cx),abs(y-cy)) < 1150
+        max(abs(x-cx),abs(y-cy)) < RasterPacket.halfMeters - 50
     }
     /// A late packet behind the vehicle must not block the current route's next capture.
     /// Retain early future packets on the actual route, including bends/hairpins.

@@ -4,7 +4,7 @@ import UIKit
 /// 版本：跟随 App 版本（见 Config.swift，iOS v0.2 新增；和安卓版 MapFeeder.kt 一样）
 ///
 /// 小地图数据：
-/// - 导航时下载当前位置附近约 2.4 公里见方的地图（高德 SDK 截图底图），
+/// - 导航时下载当前位置附近约 1.8 公里见方的地图（高德 SDK 截图底图，1.5 米/像素），
 ///   快开出这一块时自动下载下一块（向前方偏移，前面的路多下载一些）。
 /// - 选了“卫星图”风格时改下高德卫星照片（范围小一些：半边 700 米）。
 /// - 导航路线（连同路上的红绿灯位置）单独打包发给圆屏。
@@ -15,10 +15,10 @@ import UIKit
 final class MapFeeder: ObservableObject {
     static let shared = MapFeeder()
 
-    private let HALF = 1200.0            // 地图块半边长（米）
-    private let REFRESH = 650.0          // 离地图块中心超过这个距离就准备下一块
-    private let AHEAD = 450.0            // 新地图块中心往前方偏移
-    private let SAT_HALF = 700.0         // 卫星图地图块半边长（米）
+    // 底图块半边 900 米（1.5 米/像素 × 600px）。最坏情况是高速时视距 584 米，
+    // 车离块中心超过 300 米，屏顶端就开始露底，所以换块触发点只能比这个更早。
+    private let REFRESH = RasterPacket.halfMeters * 0.33   // 离中心超过约 300 米就准备下一块
+    private let AHEAD = RasterPacket.halfMeters * 0.24     // 新块中心往前方偏移约 220 米
     private let SAT_REFRESH = 330.0
     private let SAT_AHEAD = 260.0
     static let MAX_BYTES = 190_000       // 圆屏线条地图缓冲 200KB，留余量
@@ -434,7 +434,6 @@ final class MapFeeder: ObservableObject {
         MapPipelineTrace.event("fetch-start", ["serial": serial, "buildings": buildingMode, "source": Settings.shared.mapSource])
         workToken.cancel(); let token = MapWorkToken(); workToken = token
         let src = Settings.shared.mapSource, sat = satMode, buildings = node == nil && buildingMode && MapCoveragePolicy.mayCaptureBuildings(kmh:pose?.kmh ?? 0), style = Settings.shared.theme
-        let half = HALF, satHalf = SAT_HALF
         // Cached packets can be read and sent even when iOS has suspended graphics rendering.
         let cached=buildingMode ? RouteMapCache.shared.read(frame:f,source:src,buildings:true,node:cacheNode,style:style)
             ?? RouteMapCache.shared.read(frame:f,source:src,buildings:false,node:cacheNode,style:style)
@@ -462,7 +461,7 @@ final class MapFeeder: ObservableObject {
                         DispatchQueue.main.async {
                             if serial == self.requestSerial && !token.isCancelled {
                                 self.fetchingBaseReady = true
-                                self.acceptChunk(base, cx: cx, cy: cy, sat: false, type: Self.TYPE_RASTER, info: "高德无字底图，2 米/像素", src: src)
+                                self.acceptChunk(base, cx: cx, cy: cy, sat: false, type: Self.TYPE_RASTER, info: "高德无字底图，1.5 米/像素", src: src)
                             }
                         }
                     }, onBuildingStatus: { message in
@@ -470,7 +469,7 @@ final class MapFeeder: ObservableObject {
                             if serial == self.requestSerial && !token.isCancelled { self.buildingInfo = message }
                         }
                     }, style: style,preparedBase:cached).bytes
-                    info = "高德无字底图，2 米/像素"
+                    info = "高德无字底图，1.5 米/像素"
                 }
                 if let packet = bytes, !sat, !token.isCancelled {
                     try? RouteMapCache.shared.store(packet, frame: f, source: src, node: cacheNode, style: style)

@@ -41,8 +41,8 @@ enum AmapSdkRaster {
                 throw error
             }
         }
-        let half = satellite ? 700.0 : 1200.0
-        let n = satellite ? 400 : 1200, x = Int((cx - half).rounded()), y = Int((cy + half).rounded())
+        let half = satellite ? 700.0 : RasterPacket.halfMeters
+        let n = satellite ? 400 : RasterPacket.size, x = Int((cx - half).rounded()), y = Int((cy + half).rounded())
         let roads:[UInt8],base:Data
         if includeBuildings,!satellite,style==1,let cached=preparedBase,
            RasterPacket.valid(cached,frame:f.id,x:x,y:y),!RasterPacket.isBuilding(cached),
@@ -54,20 +54,20 @@ enum AmapSdkRaster {
         if satellite { return try SatelliteRaster.encode(f,cx: cx,cy: cy,half: half,raw: raw,shouldCancel: shouldCancel) }
         if style == 0 {
             let q = MapStyles.original(raw)
-            let packet = MapGeo.encodeRaster(frameId: f.id, x0: x, y0: y, w: n, h: n, mmPerPx: 2000, idx: q.indices, pal: q.palette)
+            let packet = MapGeo.encodeRaster(frameId: f.id, x0: x, y0: y, w: n, h: n, mmPerPx: RasterPacket.mmPerPixel, idx: q.indices, pal: q.palette)
             MapSampleReport.shared.capture(raw:raw,indices:q.indices,palette:q.palette,packet:packet,w:n,h:n,style:style)
             guard packet.count <= 480000, RasterPacket.valid(packet) else { throw MapProcessingError.invalid("高德原版底图过大") }
             onBaseReady?(packet); return RasterResult(bytes: packet, tiles: 1, fromCache: 0)
         }
         if style == 5 {
             let minimal=MapStyles.minimal(raw,size:n)
-            let packet = MapGeo.encodeRaster(frameId: f.id, x0: x, y0: y, w: n, h: n, mmPerPx: 2000, idx: minimal)
+            let packet = MapGeo.encodeRaster(frameId: f.id, x0: x, y0: y, w: n, h: n, mmPerPx: RasterPacket.mmPerPixel, idx: minimal)
             MapSampleReport.shared.capture(raw:raw,indices:minimal,packet:packet,w:n,h:n,style:style)
             guard RasterPacket.valid(packet) else { throw MapProcessingError.invalid("黑白道路数据无效") }
             onBaseReady?(packet); return RasterResult(bytes: packet, tiles: 1, fromCache: 0)
         }
         roads=MapGeo.classifyAmapBase(raw,w:n,h:n)
-        base=MapGeo.encodeRaster(frameId:f.id,x0:x,y0:y,w:n,h:n,mmPerPx:2000,idx:roads)
+        base=MapGeo.encodeRaster(frameId:f.id,x0:x,y0:y,w:n,h:n,mmPerPx:RasterPacket.mmPerPixel,idx:roads)
         MapSampleReport.shared.capture(raw:raw,indices:roads,packet:base,w:n,h:n,style:style)
         guard MapGeo.materialPixelCount(roads)>=MapGeo.minMaterialPixels(w:n,h:n) else {
             throw MapProcessingError.invalid("底图尚未准备完整，保留已有地图")
@@ -82,9 +82,11 @@ enum AmapSdkRaster {
         onBuildingStatus?("正在从高德近景截图提取建筑轮廓…")
         do {
             var roofs = [UInt32](repeating:0xfff8f9fa,count:n*n)
+            // 四个 600px 子块拼满整块底图：世界坐标步长 = 600 像素 × 米/像素
+            let quad = 600 * RasterPacket.mmPerPixel / 1000
             for ty in 0...1 { for tx in 0...1 {
                 try check()
-                let tile = try take(x: x + tx * 1200, y: y - ty * 1200, n: 600)
+                let tile = try take(x: x + tx * quad, y: y - ty * quad, n: 600)
                 for j in 0..<600 { for i in 0..<600 where AmapBuildings.marked(tile[j * 600 + i]) {
                     roofs[(ty * 600 + j) * n + tx * 600 + i] = 0xffff00ff
                 } }
@@ -96,7 +98,7 @@ enum AmapSdkRaster {
                 return RasterResult(bytes: base, tiles: 5, fromCache: 0)
             }
             onBuildingStatus?("高德建筑：\(buildings.buildings) 片轮廓，\(buildings.roofPixels) 个建筑像素")
-            let packet = MapGeo.encodeRaster(frameId: f.id, x0: x, y0: y, w: n, h: n, mmPerPx: 2000 | RasterPacket.flag, idx: buildings.pixels)
+            let packet = MapGeo.encodeRaster(frameId: f.id, x0: x, y0: y, w: n, h: n, mmPerPx: RasterPacket.mmPerPixel | RasterPacket.flag, idx: buildings.pixels)
             guard RasterPacket.valid(packet) else { onBuildingStatus?("建筑地图数据超出限制，保留普通底图"); return RasterResult(bytes: base, tiles: 1, fromCache: 0) }
             return RasterResult(bytes: packet, tiles: 5, fromCache: 0)
         } catch MapProcessingError.cancelled { throw MapProcessingError.cancelled }

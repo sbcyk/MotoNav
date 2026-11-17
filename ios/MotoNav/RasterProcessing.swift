@@ -1,8 +1,14 @@
 import Foundation
 
-/// Protocol-compatible with Android RasterPacket: 1200², 2 m/pixel, bounded RLE.
+/// Protocol-compatible with Android RasterPacket: 1200², 1.5 m/pixel, bounded RLE.
 enum RasterPacket {
     static let size = 1200, flag = 0x4000
+    /// 每像素毫米数。改这一个常量要连带改两处，否则底图和视距对不上：
+    /// `AmapCaptureHost.mpp`（截图按它取地理范围）、固件 `MapFrame.h` 的 `targetS`
+    /// 与 `MapCoveragePolicy.radius` 那一对缩放上下限（0.85 / 0.5）。
+    static let mmPerPixel = 1500
+    /// 一块底图的半边长（米）：1200 px ÷ 2 × 1.5 m = 900 m
+    static let halfMeters = Double(size) * Double(mmPerPixel) / 2000
     static func u16(_ b: [UInt8], _ p: Int) -> Int { Int(b[p]) | Int(b[p + 1]) << 8 }
     static func i32(_ b: [UInt8], _ p: Int) -> Int {
         Int(Int32(bitPattern: UInt32(b[p]) | UInt32(b[p+1]) << 8 | UInt32(b[p+2]) << 16 | UInt32(b[p+3]) << 24))
@@ -10,17 +16,17 @@ enum RasterPacket {
     static func isBuilding(_ data: Data) -> Bool {
         guard data.count >= 16 else {return false}
         return data.withUnsafeBytes { (b:UnsafeRawBufferPointer) in
-            (Int(b[14]) | (Int(b[15]) << 8)) == (2000 | flag)
+            (Int(b[14]) | (Int(b[15]) << 8)) == (mmPerPixel | flag)
         }
     }
     static func valid(_ data: Data, frame: Int, x: Int, y: Int) -> Bool {
         let b = [UInt8](data)
         guard b.count >= 17, b.count <= 480000, u16(b, 0) == frame, i32(b, 2) == x, i32(b, 6) == y,
-              u16(b, 10) == size, u16(b, 12) == size, [2000, 2000 | flag, 2000 | 0x8000].contains(u16(b, 14)) else { return false }
+              u16(b, 10) == size, u16(b, 12) == size, [mmPerPixel, mmPerPixel | flag, mmPerPixel | 0x8000].contains(u16(b, 14)) else { return false }
         let customPalette = u16(b, 14) & 0x8000 != 0
         guard !customPalette || b.count >= 49 else { return false }
         var pos = customPalette ? 48 : 16, pixels = 0
-        let building = u16(b, 14) == (2000 | flag)
+        let building = u16(b, 14) == (mmPerPixel | flag)
         while pos < b.count && pixels < size * size {
             let v = Int(b[pos]); pos += 1
             if v & 15 > (customPalette ? 15 : building ? 7 : 3) { return false }
@@ -56,7 +62,7 @@ enum RasterPacket {
     }
     static func forLegacy(_ data: Data) -> Data {
         guard isBuilding(data), valid(data) else { return data }
-        var b = [UInt8](data); b[14] = UInt8(2000 & 255); b[15] = UInt8(2000 >> 8)
+        var b = [UInt8](data); b[14] = UInt8(mmPerPixel & 255); b[15] = UInt8(mmPerPixel >> 8)
         var p = 16
         while p < b.count {
             let v = b[p]
@@ -87,7 +93,7 @@ enum MapStyleTransfer {
         if style==0 {return flags&0x8000 != 0}
         if style==1 {return flags&0x8000 == 0}
         if style==5 {
-            guard flags==2000 else {return false}
+            guard flags==RasterPacket.mmPerPixel else {return false}
             var p=16
             while p<bytes.count {
                 let v=bytes[p];p+=1
@@ -225,7 +231,7 @@ enum AmapBuildings {
             }
         } }
         guard retained else { return incoming }
-        let packet = MapGeo.encodeRaster(frameId: RasterPacket.u16(a, 0), x0: RasterPacket.i32(a, 2), y0: RasterPacket.i32(a, 6), w: n, h: n, mmPerPx: 2000 | RasterPacket.flag, idx: current)
+        let packet = MapGeo.encodeRaster(frameId: RasterPacket.u16(a, 0), x0: RasterPacket.i32(a, 2), y0: RasterPacket.i32(a, 6), w: n, h: n, mmPerPx: RasterPacket.mmPerPixel | RasterPacket.flag, idx: current)
         return RasterPacket.valid(packet) ? packet : incoming
     }
 }
@@ -245,7 +251,7 @@ enum MapDeliveryPolicy {
     static func compactBase(_ data:Data)->Data {
         guard RasterPacket.isBuilding(data),RasterPacket.valid(data) else {return data}
         let raw=[UInt8](data)
-        var result=Data(raw.prefix(16));result[14]=UInt8(2000&255);result[15]=UInt8(2000>>8)
+        var result=Data(raw.prefix(16));result[14]=UInt8(RasterPacket.mmPerPixel&255);result[15]=UInt8(RasterPacket.mmPerPixel>>8)
         var p=16,last=UInt8(255),run=0
         func flush() {
             while run>0 {

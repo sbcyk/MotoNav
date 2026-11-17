@@ -22,7 +22,7 @@ final class AmapCaptureHost: NSObject {
     private var timer: Timer?
     private var observer: NSObjectProtocol?
     private var satelliteCapture=false
-    private var mpp: Double { satelliteCapture ? 3.5 : 2.0 }
+    private var mpp: Double { satelliteCapture ? 3.5 : Double(RasterPacket.mmPerPixel) / 1000 }
 
     func attach(_ view: UIView) {
         container = view
