@@ -21,7 +21,9 @@
 // 写成函数而不是宏——appearIdx 运行时会变，宏在编译期就定死了。
 static inline uint16_t hbTxt()  { return appearIdx == APPEAR_MOSS ? 0xEF7D : 0xF6F5; }  // #EDF3EE / 暖白金
 static inline uint16_t hbSub()  { return appearIdx == APPEAR_MOSS ? 0x8D53 : 0xD5F1; }  // #8FA99A / 暗金
-static inline uint16_t hbRing() { return appearIdx == APPEAR_MOSS ? 0x3AE9 : 0xCD04; }  // #3E5C4A / 金环
+// v2.7 苔林表圈从 #3E5C4A 提亮到 #B5BEB5：新底图整体比旧图亮一档，原来那条深绿压在草地和
+// 车身上只有 1.1:1，等于没画；现在 3.4:1，是一条看得见的细边，又不抢主景。
+static inline uint16_t hbRing() { return appearIdx == APPEAR_MOSS ? 0xB5F6 : 0xCD04; }  // #B5BEB5 / 金环
 #define HB_RING_R     224      // 环半径：星芒半高 7，r 必须 <= 225，否则 12/6 点尖端会画出屏
 #define HB_SPARK_R    7        // 星芒半高；fillTriangle 不裁剪，越界会写坏画布后面的内存
 

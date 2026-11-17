@@ -36,10 +36,6 @@ HomeClock homeClock;
 #define H_CARD    0x10A3   // 浮层卡片
 #define H_CARD_ED 0x39E7   // 浮层描边
 
-// v2.6 苔林车灯：暖米灯芯 + 外层光晕。底图那块本来是暗的，全靠加色叠出来。
-#define H_MOSS_LAMP 0xF6B5 // (240,215,168) #F0D7A8
-#define H_MOSS_CORE 0xFF9A // (255,243,214) #FFF3D6
-
 // ================= 构图 =================
 #define H_DUST_N     20        // 光尘数量（未坐火只用前一半）
 #define H_DUST_TOP_SIT   96    // 坐着时光尘上升行程（v2.3 从 150 压到 96：光别升那么高）
@@ -69,14 +65,15 @@ static inline float hHrsProgress(float t) {
 
 // ================= 素材 =================
 #include "../../resources/HomeSprites.h"
-#include "../../resources/HomeSpritesMoss.h"   // v2.6 苔林：单张底图 + 车灯几何
+#include "../../resources/HomeSpritesMoss.h"   // v2.7 苔林：灯灭/灯亮两帧，466 1:1 直出
 
 // 整帧 / 局部都按源像素 2x 写画布，而 hCircleSpan 与 hPix 走显示坐标，
 // 两套圆内判定只有在“显示尺寸 = 源尺寸 × 2”时才等价，这里锁死。
 static_assert(LCD_WIDTH == SCENE_W * 2 && LCD_HEIGHT == SCENE_H * 2,
               "显示尺寸必须是源图的 2 倍");
-static_assert(LCD_WIDTH == MOSS_W * 2 && LCD_HEIGHT == MOSS_H * 2,
-              "苔林底图也得是显示尺寸的一半");
+// v2.7 苔林改成 466 直出，不再放大：1:1 写画布，只用 hCircleSpan 逐行裁圆
+static_assert(LCD_WIDTH == MOSS_W && LCD_HEIGHT == MOSS_H,
+              "苔林底图应该和显示尺寸一样大");
 
 // 加色叠加：光是加到画面上，不是盖掉背景；k = 0~16，越大越亮
 static inline uint16_t hadd(uint16_t p, uint16_t c, int k) {
@@ -433,39 +430,28 @@ static void hDrawInfo() {
   printCentered("TAP TO CLOSE", CX, 350, 1, 0x4208);
 }
 
-// ================= 苔林夜骑（v2.6）=================
-// 一张底图 + 固件画的灯，两态只差灯亮不亮。静态画面：没有粒子、没有过渡，
-// 也没有局部擦除——静置时一帧都不重画，只有状态或分钟变了才整帧来一次。
+// ================= 苔林夜骑（v2.6 / v2.7 换成两帧素材）=================
+// 灯灭、灯亮各一张 466 底图，两帧共用一张调色板，且光照区之外逐像素相同——
+// 连接状态切换时只有车灯那一片在变，背景一动不动，没有过渡也不用擦除。
+// 静态画面：没有粒子、没有过渡，也没有局部擦除——静置时一帧都不重画，
+// 只有状态或分钟变了才整帧来一次。
 static void hMossScene() {
   uint16_t *fb = gfx->getFramebuffer();
   if (!fb) { gfx->fillScreen(C_BLACK); return; }
-  for (int sy = 0; sy < MOSS_H; sy++) {
+  const uint8_t *idx = (hT >= 0.5f) ? MOSS_IDX_ON : MOSS_IDX_OFF;   // v2.7 按状态选帧
+  for (int y = 0; y < MOSS_H; y++) {
     int x0, x1;
-    hScenePairSpan(sy, x0, x1);              // 圆内裁切和艾尔登共用一套
+    hCircleSpan(y, x0, x1);                  // 1:1 直出，逐行裁圆就够
     if (x0 >= x1) continue;
-    const uint8_t *row = MOSS_IDX + (size_t)sy * MOSS_W;
-    uint16_t *o0 = fb + (size_t)(sy * 2) * LCD_WIDTH + x0;
-    uint16_t *o1 = o0 + LCD_WIDTH;
-    for (int sx = x0 >> 1; sx < (x1 >> 1); sx++) {
-      const uint16_t c = MOSS_PAL[row[sx]];
-      o0[0] = c; o0[1] = c; o1[0] = c; o1[1] = c;
-      o0 += 2; o1 += 2;
-    }
+    const uint8_t *row = idx + (size_t)y * MOSS_W;
+    uint16_t *o = fb + (size_t)y * LCD_WIDTH + x0;
+    for (int x = x0; x < x1; x++) *o++ = MOSS_PAL[row[x]];
   }
-}
-
-// 车灯：参考图里车灯是**一个亮起来的灯罩**——实心亮盘 + 一圈很短的辉光，
-// 路面不铺光斑。别叠多层做大光晕，叠出来是一坨糊在车头的光球，不是灯。
-static void hMossLamp() {
-  hAddEllipse(MOSS_LAMP_X, MOSS_LAMP_Y, MOSS_GLOW_R, MOSS_GLOW_R, H_MOSS_LAMP, 4);
-  hAddEllipse(MOSS_LAMP_X, MOSS_LAMP_Y, MOSS_LAMP_R, MOSS_LAMP_R, H_MOSS_LAMP, 16);
-  hAddEllipse(MOSS_LAMP_X, MOSS_LAMP_Y, MOSS_LAMP_R - 3, MOSS_LAMP_R - 3, H_MOSS_CORE, 16);
 }
 
 static void hMossFull(unsigned long now) {
   hT = (waitSt == WAIT_READY) ? 1.0f : 0.0f;   // 没有过渡：直接对齐当前状态
   hMossScene();
-  if (hT >= 0.5f) hMossLamp();
   drawHomeBand(now);
   if (hInfoOn) hDrawInfo();
 }

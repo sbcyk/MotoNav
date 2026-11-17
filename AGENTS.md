@@ -158,7 +158,7 @@ firmware/
 - 地图仍是 `#t,N` + `themeIdx`，包不直接改它：iOS 换包时**顺手**把配套风格一起发出去，避免停在「苔林包 + 粉紫地图」的半套状态
 - 色板落在 `ios/MotoNav/AppTheme.swift` 的 `ThemePack`（`accent` + `palette`）。`AppTheme` 的语义色全部改成了 `static var` 计算属性——写成 `static let` 会在第一次访问时把颜色定死，换包不生效
 - 换包要重建整棵视图树：`MotoNavApp` 用 `@AppStorage("appearance")` 当 `.id()`，因为颜色是计算属性、没有可观察源
-- **首页画面按包分流**（v2.6）：`appearIdx == APPEAR_MOSS` 走 `HomeSpritesMoss.h` 的整帧路径，否则走艾尔登的黄昏赐福。苔林素材只有**一张** 233×233 8bpp 未点灯底图，两态不换素材——已连接时由固件在灯位叠加几何光（`MOSS_LAMP_*` / `hAddEllipse` 加色），未连接不叠。别试图用「一份索引 + 两套调色板」还原熄灯态：这张底图的天空和车灯同属暖白，按颜色分不了带，圈出灯区后也没法把天空补回去
+- **首页画面按包分流**（v2.6 起，v2.7 换素材）：`appearIdx == APPEAR_MOSS` 走 `HomeSpritesMoss.h`，否则走艾尔登的黄昏赐福。苔林素材是**两帧** 466×466 8bpp（灯灭 / 灯亮），屏上 1:1 直出、不再放大；两帧共用一张 256 色调色板，且光照矩形（x 220~465、y 185~449）之外逐字节相同，所以切状态时只有车灯那一片在变，没有过渡也不用局部擦除。灯亮帧不是另画一张，是拿灯灭帧当母版、只把光照区那一片换成右联的像素得来的。**别再改回「固件叠几何光」那条路**：在像素画上算平滑椭圆加色，叠出来是一坨糊在车头的光球，跟参考图不是一回事（v2.6 踩过）
 
 ### 主循环（`MotoNav.ino`，每轮）
 
@@ -430,7 +430,7 @@ iOS 出包：`Run workflow` → 选分支（build 号由 run 号自动生成，�
 | `docs/需求清单.md` | 需求、进度、阻塞项、验收记录（唯一记录处） |
 | `docs/IOS-CI-GUIDE.md` | iOS 云端出包与装机步骤（0–8 节） |
 | `scripts/home_sprites.py` | 生成主页两态画面 `resources/HomeSprites.h`（8bpp 233×233，两态共用一张 256 色调色板）。参考图都在 `assets/reference/`：<br>· `home-v3-standing.png` 已连接态：站姿牵马，黄金树、王城、峡谷一起入画<br>· `home-v3-seated.png` 未连接态：与前者同源生成，只把人改成独坐、马去掉<br>脚本以母版为底，只把「人马矩形」和「赐福柱带」两块换成另一张图的像素（矩形 + 高斯羽化），区外逐像素复制母版；两态共用一张调色板 + 同一个 Bayer 抖动场（偏移只跟坐标有关，同一坐标同色必得同一索引），最后校验“两区之外失配 = 0”，不为 0 直接报错。`HOME_BEAM_*` 锚点与 `HOME_MAN_*` / `HOME_HRS_*` 两块矩形也由它写出；锚点 x 取“画面下部暖色行数最多的那一列”，y 取 `main()` 里传的基线常数（当前 204）——换参考图或改取景框后要重新量基线，对不上脚本会报错而不是静默跑偏 |
-| `scripts/home_sprites_moss.py` | 生成苔林首页 `resources/HomeSpritesMoss.h`（单张 233×233 8bpp 底图 + 车灯几何宏，索引 54,289 B + 调色板 512 B）。参考图 `assets/reference/home-moss-base.png`：苔林山道 + 侧视摩托车，**灯未点亮、画面无任何文字**。脚本会校验灯盘位置确实是暗的（`LAMP_DARK_MAX`），换底图后灯位跑偏直接报错。车灯的灯盘半径 / 辉光半径写在 `LAMP` 里，改灯位改这一处；**只画亮起来的灯罩，不要加光锥或地面光斑** |
+| `scripts/home_sprites_moss.py` | 生成苔林首页 `resources/HomeSpritesMoss.h`（两帧 466×466 8bpp，索引 217,156 B/帧 + 共用调色板 512 B）。参考图 `assets/reference/home-moss-pair.png`：左右两联的横图（灯灭 / 灯亮），中间一条亮分隔线，脚本自己找。构造方式：左联当母版，右联只替换「邻域平均提亮」的光照区（膨胀 2 像素后**裁回 `LIT_RECT`**，保证区外逐字节不动），区外一律保留母版——两联是两次生成的，整张替换整幅会闪。调色板分两段：176 位给整图、80 位专给光照（不这么干，光锥会从琥珀洗成灰绿）。铭牌那行 `NICE TO CU` 由脚本用 3×5 像素字原位重写（`PLATE` / `PLATE_GLYPHS`），参考图上那行字在 466 下只剩 3~4 像素宽、糊成乱码。脚本校验：找得到分隔线、两帧差异落在 `EXPECT_MIN/MAX_CHANGED` 之间、铭牌那一带够亮且牌面底色不是车身 |
 | `scripts/home_preview.py` | PC 端预览主页画面，输出 `scripts/preview/*.png`，需 Pillow |
 | `.github/workflows/ios-quick.yml` | 精简工作流，8~15 分钟出 unsigned IPA |
 | `firmware/README.md` | 固件编译、打包与烧录说明（版本读 `RELEASE_VERSION`） |
