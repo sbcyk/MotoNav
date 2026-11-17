@@ -140,7 +140,10 @@ final class MapFeeder: ObservableObject {
         }
     }
     func requestMapSample() {
-        guard [0,1,5].contains(Settings.shared.theme),frame != nil,pose != nil else {
+        guard MapSampleReport.supports(Settings.shared.theme) else {
+            MapSampleReport.shared.fail("这个地图风格没有高德底图，换一个再生成对照图。");return
+        }
+        guard frame != nil,pose != nil else {
             MapSampleReport.shared.fail("请先开始一次导航或模拟，再生成地图对照图。");return
         }
         let f=frame!,p=pose!

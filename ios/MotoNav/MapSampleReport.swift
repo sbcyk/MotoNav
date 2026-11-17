@@ -9,8 +9,12 @@ final class MapSampleReport: ObservableObject {
     @Published private(set) var waiting=false
     private let lock=NSLock()
     private var request:(id:UUID,style:Int)?
+    /// 能出对照图的风格：走高德截图 + 颜色分类的那几种。
+    /// 0 原版（16 色调色板）、1 罪恶都市、5 极简、12 苔林；卫星图 10 是独立编码、
+    /// 龙珠雷达 11 根本没有底图。以后往风格列表里加新风格，记得同步这里。
+    static func supports(_ theme: Int) -> Bool { [0, 1, 5, 12].contains(theme) }
     func begin() {
-        guard [0,1,5].contains(Settings.shared.theme) else {fail("请先选择高德原版、罪恶都市或极简风格。");return}
+        guard MapSampleReport.supports(Settings.shared.theme) else {fail("请先选择高德原版、罪恶都市、极简或苔林风格。");return}
         lock.lock();request=(UUID(),Settings.shared.theme);lock.unlock()
         files=[];waiting=true;status="正在重新取图，请保持 App 在前台…"
         MapFeeder.shared.requestMapSample()
