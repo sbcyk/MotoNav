@@ -436,4 +436,4 @@ iOS 出包：`Run workflow` → 选分支（build 号由 run 号自动生成，�
 | `firmware/README.md` | 固件编译、打包与烧录说明（版本读 `RELEASE_VERSION`） |
 | `docs/archive/RELEASE-IOS-FIRMWARE-2026-11-01.md` | 2026-11-01 发布结论记录（无外链） |
 
-仓库外、仅本机存在的：`..\builds\<日期>-<分支>\`（每次出包归档的 bin + SHA256）、`..\arduino-setup\`（工具链安装缓存）、`..\latest-2026.11.01-r2\`（上游下载包）。这些不进 git，换机器要自带。
+仓库外、仅本机存在的：`..\builds\<日期>-<分支>\`（每次出包归档的 bin + SHA256）、`..\tools\`（打包用的 esptool）、`..\arduino-setup\`（工具链安装缓存）。这些不进 git，换机器要自带。
