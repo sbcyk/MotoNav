@@ -107,17 +107,18 @@ void drawTripLine(int y) {
 void drawMapLanes() {
   const bool visible = laneN > 0 && ringActive;
 #if FPS_SERIAL_DIAGNOSTICS
-  static int previous = -1;
+  static int previous = -1, previousSig = -1;
+  int sig = 0;
+  for (int i = 0; i < laneN; i++) sig = sig * 97 + laneBg[i] * 16 + laneFr[i];
   const int state = visible ? laneN : 0;
-  if (state != previous) {
-    Serial.printf("LANE HUD visible=%d lanes=%d ring=%d metres=%d\n", visible, laneN, ringActive, navDist);
-    previous = state;
+  if (state != previous || (visible && sig != previousSig)) {
+    Serial.printf("LANE HUD visible=%d lanes=%d ring=%d metres=%d bg=%d fr=%d\n", visible, laneN, ringActive, navDist, laneBg[0], laneFr[0]);
+    previous = state; previousSig = sig;
   }
 #endif
   if (!visible) return;
-  const int H = 30, MAXW = 210;
-  int lw = (int)(fminf(36.0f * H / 32, (float)MAXW / laneN) * laneN);
+  int lw = laneMapStripW();
   int y = hasCam ? 114 : 100;
-  dimRect(CX - lw / 2 - 9, y - 5, lw + 18, H + 10, 11, 70);
-  drawLanesAt(CX, y, MAXW, H);
+  dimRect(CX - lw / 2 - 9, y - 5, lw + 18, LANE_MAP_H + 10, 11, 70);
+  drawLanesAt(CX, y, LANE_MAP_MAXW, LANE_MAP_H);
 }

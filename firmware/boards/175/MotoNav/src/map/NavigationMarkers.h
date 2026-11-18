@@ -214,10 +214,9 @@ void addHudObstacles() {
     if (hasCam) obsAdd(CX + 52 - 34, 30, CX + 52 + 34, 98);             // 测速牌 + 距离
   }
   if (laneN > 0 && ringActive) {                                    // 与倒计时及 drawMapLanes 同步
-    const int H = 30, MAXW = 210;
-    int lw = (int)(fminf(36.0f * H / 32, (float)MAXW / laneN) * laneN);
+    int lw = laneMapStripW();                                       // v2.8 尺寸统一走 laneMapStripW
     int y = hasCam ? 114 : 100;
-    obsAdd(CX - lw / 2 - 9, y - 5, CX + lw / 2 + 9, y + H + 5);
+    obsAdd(CX - lw / 2 - 9, y - 5, CX + lw / 2 + 9, y + LANE_MAP_H + 5);
   }
   obsAdd(0, 340, LCD_WIDTH, LCD_HEIGHT);                                // 底部箭头、距离、行程信息
 }

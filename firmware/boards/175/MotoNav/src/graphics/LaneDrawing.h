@@ -2,8 +2,14 @@
 // 车道图标缓存和绘制。由 MotoNav.ino 按依赖顺序包含，仅编译一次。
 // ================= 车道 =================
 
-// 高德车道方向码 → 方向位：1 直行，2 左转，4 右转，8 左掉头，16 右掉头
-// 注意：这张对照表来自经验，可能需要实测校准（App 上会显示原始编码）
+// 高德车道方向码 → 方向位：1 直行，2 左转，4 右转，8 左掉头（左转掉头），16 右掉头（右转掉头）
+// v2.8 编码含义逐条对照高德导航 SDK 文档（AMapNaviDriveDataRepresentable 的 showLaneBackInfo:laneSelectInfo:）：
+//   0 直行 / 1 左转 / 2 直行和左转 / 3 右转 / 4 直行和右转 / 5 左转掉头 / 6 左转和右转 /
+//   7 直行和左转和右转 / 8 右转掉头 / 9 直行和左转掉头 / 10 直行和右转掉头 / 11 左转和左转掉头 /
+//   12 右转和右转掉头 / 13 直行、左侧道路变宽 / 14 左转和左转掉头、左侧变宽 /
+//   16 直行和左转和左掉头 / 17 右转和左掉头 / 18 左转和左掉头和右转 / 19 直行和右转和左掉头 /
+//   20 左转和右掉头 / 21 公交车道 / 23 可变车道
+//   255 只出现在推荐串里，表示规划的路线不走这条车道（App 端转成 f）
 uint8_t laneFlags(uint8_t code) {
   switch (code) {
     case 0:  return 1;
@@ -19,7 +25,16 @@ uint8_t laneFlags(uint8_t code) {
     case 10: return 1 | 16;
     case 11: return 2 | 8;
     case 12: return 4 | 16;
-    default: return 1;
+    case 13: return 1;                                   // v2.8 直行、左侧变宽
+    case 14: return 2 | 8;                               // v2.8 左转和左转掉头、左侧变宽
+    case 16: return 1 | 2 | 8;                           // v2.8
+    case 17: return 4 | 8;                               // v2.8
+    case 18: return 2 | 8 | 4;                           // v2.8
+    case 19: return 1 | 4 | 8;                           // v2.8
+    case 20: return 2 | 16;                              // v2.8
+    case 21: return 1;                                   // v2.8 公交车道：方向未知，按直行画
+    case 23: return 1;                                   // v2.8 可变车道：方向未知，按直行画
+    default: return 1;                                   // 没见过的码按直行，宁可画一条也不留空
   }
 }
 
@@ -31,6 +46,23 @@ uint16_t *laneCol = nullptr;
 uint8_t *laneA = nullptr;
 int laneBX = 0, laneBY = 0, laneBW = 0, laneBH = 0;
 uint32_t laneHash = 0;
+
+// v2.8 车道条尺寸：地图页 HUD 和"别让电子眼图标压上来"的占位框共用一套，两处公式必须一致
+#define LANE_MAP_H      36
+#define LANE_MAP_MAXW   250
+#define LANE_PAGE_H     36
+#define LANE_PAGE_MAXW  330
+
+// v2.8 配色：非推荐车道原来用 C_DIM(#6B6B6B)，5 条挤在一起时数不清有几条；
+//      推荐车道除了箭头变白，再垫一块琥珀色底，一眼看出该走哪条
+#define C_LANE_OFF 0x8C71    // #8C8C8C 能走、但不是规划要走的那条
+#define C_LANE_SEP 0x4228    // #444444 分隔虚线（原来 #333333 太暗）
+#define C_LANE_HL  0xF623    // 推荐车道底色（C_YELLOW）
+
+int laneMapStripW() {
+  if (laneN <= 0) return 0;
+  return (int)(fminf(36.0f * LANE_MAP_H / 32, (float)LANE_MAP_MAXW / laneN) * laneN);
+}
 
 // 画一段圆弧（用几小段线连起来）；角度：0 = 朝右，90 = 朝下（屏幕坐标）
 void arcLine(float ox, float oy, float r, float a0, float a1, float w, uint16_t col) {
@@ -45,16 +77,17 @@ void arcLine(float ox, float oy, float r, float a0, float a1, float w, uint16_t 
 }
 
 // 在一条车道里画方向符号（只记录图形）；cx = 车道中心 x，y0 = 顶部，h = 高度
-void drawLaneGlyph(float cx, float y0, float h, uint8_t flags, uint16_t col) {
+// v2.8 sq = 横向收窄系数：车道多到 7、8 条时车道变窄，箭头臂按比例缩，免得压到隔壁
+void drawLaneGlyph(float cx, float y0, float h, uint8_t flags, uint16_t col, float sq = 1.0f) {
   const float k = h / 32.0f;
-  const float w = 4.6f * k, hs = 6.8f * k;
+  const float w = 5.0f * k, hs = 6.8f * k * sq;    // v2.8 线宽 4.6 → 5.0：远一点也看得出是箭头
   const float base = y0 + h, top = y0 + 3 * k;
   if (flags & 1) {                                         // 直行
     thickLine(cx, base, cx, top + hs, w, col);
     arrowHead(cx, top + hs, 0, hs, col);
   }
   if (flags & (2 | 4)) {                                   // 左转/右转：竖线 → 圆弧 → 横线 → 箭头
-    const float rr = 4.5f * k, arm = 9.0f * k;
+    const float rr = 4.5f * k, arm = 9.0f * k * sq;
     float cy = y0 + h * ((flags & 1) ? 0.6f : 0.42f);     // 和直行合在一起时拐点放低
     thickLine(cx, base, cx, cy + rr, w, col);
     if (flags & 4) {
@@ -123,7 +156,34 @@ void laneRender() {
   }
 }
 
-void drawLanes(int y0) { drawLanesAt(CX, y0, 300, 32); }
+void drawLanes(int y0) { drawLanesAt(CX, y0, LANE_PAGE_MAXW, LANE_PAGE_H); }
+
+// 在 framebuffer 上叠一块圆角半透明色块（alpha 0~255），只给车道底色用
+void laneTintRect(int x, int y, int w, int h, int r, uint16_t col, int alpha) {
+  uint16_t *fb = gfx->getFramebuffer();
+  if (!fb || w <= 0 || h <= 0 || alpha <= 0) return;
+  if (x < 0) { w += x; x = 0; }
+  if (y < 0) { h += y; y = 0; }
+  if (x + w > LCD_WIDTH) w = LCD_WIDTH - x;
+  if (y + h > LCD_HEIGHT) h = LCD_HEIGHT - y;
+  if (w <= 0 || h <= 0) return;
+  if (r > h / 2) r = h / 2;
+  if (r > w / 2) r = w / 2;
+  for (int j = 0; j < h; j++) {
+    int inset = 0;
+    if (r > 0 && j < r) {                                // 上下两个圆角：按圆的弦长往外缩
+      float dy = r - j - 0.5f;
+      inset = r - (int)(sqrtf((float)r * r - dy * dy) + 0.5f);
+    } else if (r > 0 && j >= h - r) {
+      float dy = j - (h - r) + 0.5f;
+      inset = r - (int)(sqrtf((float)r * r - dy * dy) + 0.5f);
+    }
+    if (inset < 0) inset = 0;
+    if (inset * 2 >= w) continue;
+    uint16_t *row = fb + (y + j) * LCD_WIDTH + x;
+    for (int i = inset; i < w - inset; i++) row[i] = blend565(row[i], col, alpha);
+  }
+}
 
 // v2.1 在指定位置画车道：cx = 中心 x，maxW = 最大总宽，h = 高度
 void drawLanesAt(float centerX, float y0, float maxW, float h) {
@@ -135,13 +195,15 @@ void drawLanesAt(float centerX, float y0, float maxW, float h) {
   }
   float lw = fminf(36 * h / 32, maxW / laneN);
   float x0 = centerX - lw * laneN / 2;
+  // v2.8 车道多的时候按比例收窄箭头横向尺寸（7、8 条时 lw 会被 maxW 压小）
+  float sq = constrain(lw / (36.0f * h / 32), 0.55f, 1.0f);
   // 1. 记录所有车道的图形
   primN = 0; recIcon = true;
   for (int i = 0; i < laneN; i++) {
     float cx = x0 + lw * (i + 0.5f);
     bool rec = laneFr[i] != 0xF;
-    drawLaneGlyph(cx, y0, h, laneFlags(laneBg[i]), rec ? C_SEP : C_DIM);   // 底层：这条车道能走的方向
-    if (rec) drawLaneGlyph(cx, y0, h, laneFlags(laneFr[i]), C_WHITE);       // 推荐方向：白色
+    drawLaneGlyph(cx, y0, h, laneFlags(laneBg[i]), C_LANE_OFF, sq);          // 底层：这条车道能走的方向
+    if (rec) drawLaneGlyph(cx, y0, h, laneFlags(laneFr[i]), C_WHITE, sq);    // 推荐方向：白色压在上面
   }
   recIcon = false;
   // 2. 和上次一样就用缓存，否则重新计算
@@ -151,6 +213,16 @@ void drawLanesAt(float centerX, float y0, float maxW, float h) {
   hs ^= primN * 7919u;
   if (hs != laneHash) { laneRender(); laneHash = hs; }
   primN = 0;
+  // 2.5 v2.8 推荐车道整条垫一块底色（连在一起的推荐车道合成一块，不切碎）
+  for (int i = 0; i < laneN; ) {
+    if (laneFr[i] == 0xF) { i++; continue; }
+    int j = i;
+    while (j + 1 < laneN && laneFr[j + 1] != 0xF) j++;
+    int bx = rnd(x0 + lw * i) + 1;
+    int bw = rnd(x0 + lw * (j + 1)) - bx - 1;
+    laneTintRect(bx, rnd(y0) - 1, bw, rnd(h) + 2, 7, C_LANE_HL, 112);
+    i = j + 1;
+  }
   // 3. 和底下的画面按透明度混合
   uint16_t *fb = gfx->getFramebuffer();
   if (fb) {
@@ -165,7 +237,8 @@ void drawLanesAt(float centerX, float y0, float maxW, float h) {
       }
     }
   }
-  // 4. 车道之间的虚线
+  // 4. 车道之间的虚线 + 上沿一条横杠（一眼能看出"车道条出现了"）
   for (int i = 1; i < laneN; i++)
-    for (float y = y0; y < y0 + h; y += 8) gfx->drawFastVLine(rnd(x0 + lw * i), rnd(y), 4, C_SEP);
+    for (float y = y0; y < y0 + h; y += 8) gfx->drawFastVLine(rnd(x0 + lw * i), rnd(y), 4, C_LANE_SEP);
+  gfx->fillRect(rnd(x0) - 4, rnd(y0) - 4, rnd(lw * laneN) + 8, 2, C_LANE_SEP);
 }
