@@ -1,93 +1,86 @@
 # MotoNav
 
-iPhone + ESP32-S3 圆屏导航。手机端用高德 SDK 渲染地图、抓图压成 4bit 调色板 + RLE，经 BLE 推到 1.75 英寸圆屏；圆屏只做解码与绘制，不参与导航计算。
+iPhone + ESP32-S3 圆屏导航。手机用高德 SDK 渲染地图、压成 4bit 调色板 + RLE 走 BLE 推给圆屏，圆屏只做解码和绘制，不参与导航计算。
 
-## 分工
+只适用 Waveshare ESP32-S3-Touch-AMOLED-1.75（ESP32-S3 / 32MB Flash / 8MB OPI PSRAM / CO5300 QSPI 466×466 / CST92xx 触摸 / AXP2101）。1.75C、1.85B、M5Stack 刷不了本仓库的镜像。
 
-| 端 | 负责 |
+改地图、路线、语音 → `ios/`；改界面、动画、图标、按键 → `firmware/`；动 BLE 字段两端一起改。
+
+## 固件：编译 + 烧录
+
+日常一条命令（要用 **PowerShell 7**，即 `pwsh`，系统自带的 `powershell` 不行）：
+
+```powershell
+pwsh -File firmware/flash-dev.ps1 -Build
+```
+
+它会先用 `build.py` 编译，再自动找 Espressif 串口（VID 303A），把 `firmware/dist/175/panel0/` 里最新的 `*_app_0x10000.bin` 写到 app 分区（`0x10000`）。**只写 app 分区，NVS 不动**——配对、屏幕方向、开机品牌、主题包都保留，写完由 esptool 自己做 hash 校验。
+
+| 参数 | 作用 |
 | --- | --- |
-| iPhone | 地图渲染、选路、搜索、收藏、轨迹、语音、媒体控制 |
-| 圆屏 | 收图解码、导航页绘制、天气与来电页、侧键交互、首页动画 |
+| 不加参数 | 只刷 `dist` 里最新的 app 镜像，不编译 |
+| `-Build` | 先编译再刷；改过代码必须带，否则刷上去还是旧固件 |
+| `-DryRun` | 只打印要执行的命令，不碰硬件 |
+| `-Port COM7` | 指定串口；默认按 VID 303A 自动找，找到多个会报错让你指定 |
+| `-Bin <路径>` | 指定镜像，默认挑 `dist/175/panel0` 里时间最新的 |
+| `-Full` | 整片刷，**清空 NVS**，救砖用，要输入 `yes` 确认 |
+| `-Baud 230400` | 线材差、经常掉线时降速，默认 460800 |
 
-手机端是导航引擎，圆屏是显示器。改地图内容、路线、语音 → 改手机端；改界面、动画、图标、按键 → 改固件。两端共用一套 BLE 协议，改协议字段必须同时改两端。
+分开跑也可以：
 
-## 硬件
+```powershell
+python firmware/build.py --cli "C:\Program Files\Arduino CLI\arduino-cli.exe" --jobs 4
+pwsh -File firmware/flash-dev.ps1
+```
 
-| 项 | 参数 |
-| --- | --- |
-| 板子 | Waveshare ESP32-S3-Touch-AMOLED-1.75（圆屏） |
-| MCU | ESP32-S3，32MB Flash，8MB OPI PSRAM，分区 `app5M_fat24M_32MB` |
-| 屏幕 | CO5300 QSPI，466×466 |
-| 触摸 | CST92xx（I2C） |
-| 电源 | AXP2101 |
+`python firmware/build.py` 里 `--cli` 只有 arduino-cli 不在 PATH 时才需要写全路径。
 
-只适用这个板型。1.75C、1.85B、M5Stack 不能刷本仓库的镜像。
+刷不进去先看这三条：
 
-## 功能
+1. 串口被串口监视器或 Arduino IDE 占着——先关掉。
+2. 板子不是 VID 303A 的原生 USB（走 CH340/CP210x 转接板），脚本找不到串口，用 `-Port` 手动指定。
+3. 镜像比源码旧——脚本会警告（只比修改时间），带 `-Build` 重来。
 
-**iPhone 端**（Swift + CocoaPods，最低 iOS 15，三栏目：导航、设备、我的）
+工具链前提：`arduino-cli` 装在 `C:\Program Files\Arduino CLI\`（`flash-dev.ps1` 里写死，装别处要改 `Invoke-Build` 那个 `$cli`），`esptool.exe` 跟着 Arduino ESP32 core 落在 `%LOCALAPPDATA%\Arduino15\packages\esp32\tools\esptool_py\` 下，脚本会自动挑最新版。
 
-- 导航：地图渲染、抓图下推、剩余距离与路名、语音播报
-- 路线规划：三条方案画在同一张图上，点选只换高亮；起终点两行都可点改
-- 搜索：输入停顿自动查，结果走浮层，不把下面卡片顶走
-- 收藏：自定义标签，标签自动收成筛选条
-- 轨迹：已并入导航页下半，本月里程与次数、最近一次缩略图与耗时，点进详情
-- 圆屏设置：导航信息 / 地图与路线 / 夜间与弯道，开机动画 / 音乐与歌词 / 屏幕方向 / 亮度
+给别人装用的 Windows 一键包由 `firmware/package_flasher.py` 生成，包里的 `flash.ps1` 会先校验版本再刷；首次安装或从 16MB 旧固件升级必须整片刷（清 NVS）。
 
-**圆屏端**（ESP32-S3）
+## iPhone App
 
-- 首页「赐福」：未连接独坐、已连接起身牵马，两态过渡带粒子；连上后叠一层常驻信息带（时间、日期、地点、天气）
-- 导航主界面、天气页、来电页、到达特效、配对页
-- 触摸 + BOOT / PWR 两个侧键；音乐走 HID over GATT（Apple AMS）
+```sh
+bash build-ios.sh          # 需 macOS + Xcode + CocoaPods 1.16.2，产出 output/ios/*.ipa（未签名）
+```
+
+或在 Actions 里手动跑 `iOS Quick Build (unsigned IPA)`，产物同样未签名，要自己签了才能装，免费签名一般 7 天续一次。
+
+首次使用要在 App 设置页填高德 iOS Key（Key 要绑定签名后的 Bundle ID），不填时搜索框下面会常驻提示。
+
+版本号：App 只改 `MARKETING_VERSION`（`ios/MotoNav.xcodeproj/project.pbxproj`），固件要 `FW_VERSION`、`RELEASE_VERSION`、`flash.ps1` 三处一起改，细则和 tag 规范见 `AGENTS.md`。
 
 ## 目录
 
 | 路径 | 内容 |
 | --- | --- |
 | `ios/` | iPhone App 源码，Swift + CocoaPods（高德 AMapNavi / AMapSearch） |
-| `firmware/` | 固件源码、烧录包生成、打包脚本 |
+| `firmware/` | 固件源码、编译与烧录脚本、一键包生成 |
 | `docs/` | 技术文档、需求清单、CI 与素材说明 |
 | `scripts/` | iOS 打包、首页画面生成 |
-
-## 构建
-
-**iOS**（需 macOS + Xcode + CocoaPods 1.16.2）
-
-```sh
-bash build-ios.sh              # 产出 output/ios/*.ipa（未签名）
-```
-
-或在 Actions 里手动跑 `iOS Quick Build (unsigned IPA)`。IPA 需自行签名安装，免费签名通常 7 天续签一次。
-
-首次运行要去高德开放平台申请 iOS Key（绑定签名后的 Bundle ID），填在 App 设置页；不填时搜索框下方会常驻提示。
-
-**固件**（需 arduino-cli + Espressif ESP32 Arduino Core 3.3.10）
-
-```sh
-python3 firmware/build.py      # 产出 firmware/dist/175/panel0/
-```
-
-FQBN 与版本同步要求见 `AGENTS.md`。
-
-**烧录**：解压生成好的一键包，已有同分区固件时选「应用升级」写 `0x10000`；首次安装、救砖、从 16MB 分区旧固件升级必须整片刷，会清 NVS。
 
 ## 文档
 
 | 内容 | 位置 |
 | --- | --- |
-| 规范、架构、构建约束、改动点 | `AGENTS.md` |
+| 规范、架构、编译约束、内存预算 | `AGENTS.md` |
 | 协议、时序、地图管线 | `docs/MotoNav-技术文档.md` |
-| 需求、进度、验收 | `docs/需求清单.md` |
+| 需求、进度、验收状态 | `docs/需求清单.md` |
 | 版本改动 | `CHANGELOG.md` |
 | iOS CI 用法 | `docs/IOS-CI-GUIDE.md` |
 | 媒体键协议 | `docs/BLE-HID.md` |
 
-## 来源
+## 来源与许可
 
-本项目 fork 自 [CharlesXu/MotoNav](https://github.com/CharlesXu/MotoNav)，在此基础上重做 iOS 端并继续开发圆屏固件；iOS 界面布局参考 [coolcoolmanman-design/MotoNav](https://github.com/coolcoolmanman-design/MotoNav)，参考范围与保留项见 [UI-SOURCE-NOTICE.md](ios/UI-SOURCE-NOTICE.md)。版本号与上游独立，改动历史见 `CHANGELOG.md`。
+fork 自 [CharlesXu/MotoNav](https://github.com/CharlesXu/MotoNav)，iOS 端重写并继续开发固件；iOS 界面布局参考 [coolcoolmanman-design/MotoNav](https://github.com/coolcoolmanman-design/MotoNav)，参考范围见 [UI-SOURCE-NOTICE.md](ios/UI-SOURCE-NOTICE.md)。版本号与上游独立。
 
-## 许可
+非商业使用，见 `LICENSE.md`；第三方 SDK、库与素材的许可见 `licenses/`。
 
-非商业使用，见 `LICENSE.md`。第三方 SDK、库与素材的许可见 `licenses/`。
-
-行驶中不要操作设备。路线、图标均不能代替现场信号与标志。
+行驶中不要操作设备，路线和图标不能代替现场信号与标志。
