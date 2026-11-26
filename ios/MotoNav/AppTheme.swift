@@ -427,18 +427,19 @@ struct ThemePalette {
     let sub: UInt32, subDark: UInt32
 }
 
-/// 主题包：一套包 = App 强调色 + 首页画面 + 默认地图配色。
+/// 主题包：一套包 = App 强调色 + 首页画面 + 配套地图风格。
+/// v1.5 起包锁定地图风格（`allowedThemes`），只有「默认」包留了原版 / 极简黑白两个可选。
 /// 编号写进手机偏好和圆屏 NVS，**只能追加、不能重排**，否则老设备会认成别的包。
 enum ThemePack: Int, CaseIterable {
     case elden = 0
     case moss = 1
-    case mono = 2
+    case standard = 2
 
     var name: String {
         switch self {
         case .elden: return "艾尔登"
         case .moss:  return "苔林夜骑"
-        case .mono:  return "黑白"
+        case .standard: return "默认"
         }
     }
 
@@ -446,7 +447,7 @@ enum ThemePack: Int, CaseIterable {
         switch self {
         case .elden: return "暖金 · 配罪恶都市地图"
         case .moss:  return "低饱和绿 · 配苔林地图"
-        case .mono:  return "中性灰白 · 原版 / 极简黑白地图"
+        case .standard: return "系统蓝 · 白天/夜间跟随外观 · 原版或极简黑白地图"
         }
     }
 
@@ -455,18 +456,18 @@ enum ThemePack: Int, CaseIterable {
         switch self {
         case .elden: return 1
         case .moss:  return 12
-        case .mono:  return 0
+        case .standard: return 0
         }
     }
 
     /// v1.5 包里允许的地图风格。只有一项 = 锁死，界面上不给选；
-    /// 两项 = 在这个包内部二选一（黑白包只在「原版 / 极简黑白」之间）。
+    /// 两项 = 在这个包内部二选一（默认包只在「原版 / 极简黑白」之间）。
     /// 这样不会出现「绿包配原版地图」这种混搭。
     var allowedThemes: [Int] {
         switch self {
         case .elden: return [1]
         case .moss:  return [12]
-        case .mono:  return [0, 5]
+        case .standard: return [0, 5]
         }
     }
 
@@ -474,26 +475,31 @@ enum ThemePack: Int, CaseIterable {
 
     /// 强调色：浅色 / 深色。艾尔登的浅色必须压到 #8A5E1E，
     /// 亮金 #C08A2E 放在 #F3F3F8 底上只有 2.8:1，看不清。
+    /// 「默认」用系统蓝 #007AFF / #0A84FF，就是加主题包之前那套。
     var accent: (light: UInt32, dark: UInt32) {
         switch self {
         case .elden: return (0x8A5E1E, 0xE0B25A)
         case .moss:  return (0x2F7D5A, 0x6FBF97)
-        case .mono:  return (0x3C3C3C, 0xD0D0D0)
+        case .standard: return (0x007AFF, 0x0A84FF)
         }
     }
+
+    /// 系统默认色板：冷淡科技 · 中性灰，和加主题包之前一模一样。
+    /// 艾尔登和「默认」共用它，两者只差强调色（艾尔登暖金、默认系统蓝）。
+    static let systemPalette = ThemePalette(
+        bg: 0xF3F3F8, bgDark: 0x000000,
+        card: 0xFFFFFF, cardDark: 0x1C1C1E,
+        sunken: 0xF2F2F7, sunkenDark: 0x2C2C2E,
+        stroke: 0xC7C7CC, strokeDark: 0x3C3C43,
+        fill: 0xE5E5EA, fillDark: 0x3A3A3C,
+        text: 0x000000, textDark: 0xFFFFFF,
+        sub: 0x636366, subDark: 0x9E9EA3)
 
     /// 界面语义色板
     var palette: ThemePalette {
         switch self {
-        case .elden:
-            return ThemePalette(
-                bg: 0xF3F3F8, bgDark: 0x000000,
-                card: 0xFFFFFF, cardDark: 0x1C1C1E,
-                sunken: 0xF2F2F7, sunkenDark: 0x2C2C2E,
-                stroke: 0xC7C7CC, strokeDark: 0x3C3C43,
-                fill: 0xE5E5EA, fillDark: 0x3A3A3C,
-                text: 0x000000, textDark: 0xFFFFFF,
-                sub: 0x636366, subDark: 0x9E9EA3)
+        case .elden, .standard:
+            return Self.systemPalette
         case .moss:
             return ThemePalette(
                 bg: 0xF4F7F4, bgDark: 0x0D1310,
@@ -503,15 +509,6 @@ enum ThemePack: Int, CaseIterable {
                 fill: 0xE4EBE6, fillDark: 0x22302A,
                 text: 0x17211B, textDark: 0xE9EFEA,
                 sub: 0x5B6B61, subDark: 0x8C9C92)
-        case .mono:
-            return ThemePalette(
-                bg: 0xF7F7F7, bgDark: 0x0A0A0A,
-                card: 0xFFFFFF, cardDark: 0x1A1A1A,
-                sunken: 0xF0F0F0, sunkenDark: 0x242424,
-                stroke: 0xD0D0D0, strokeDark: 0x333333,
-                fill: 0xE6E6E6, fillDark: 0x303030,
-                text: 0x0F0F0F, textDark: 0xF2F2F2,
-                sub: 0x6B6B6B, subDark: 0x9E9E9E)
         }
     }
 }

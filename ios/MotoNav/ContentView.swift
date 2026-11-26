@@ -1051,7 +1051,7 @@ struct ContentView: View {
         }
     }
 
-    /// v1.5 当前主题包。包锁地图风格，风格选择器只在黑白包里出现。
+    /// v1.5 当前主题包。包锁地图风格，风格选择器只在「默认」包里出现。
     private var currentPack: ThemePack { ThemePack(rawValue: settings.appearance) ?? .elden }
 
     /// 主题包：换包会连强调色和地图风格一起换，所以和外观一起放在通用设置里。

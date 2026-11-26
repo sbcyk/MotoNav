@@ -184,9 +184,10 @@ bool hidMediaReady();
 // v2.5 主题包：一套包 = 首页画面 + App 强调色 + 默认地图配色。
 // 名字用 appear 不用 theme：themeIdx 已经被“地图怎么画”占用，两者不是一回事——
 // 雷达、龙珠雷达那几套根本没有底图，它们只是风格，不是包。
-#define APPEAR_ELDEN 0                         // 艾尔登：暖金，配地图 1 罪恶都市
-#define APPEAR_MOSS  1                         // 苔林夜骑：低饱和绿，配地图 12 苔林
-#define APPEAR_MONO  2                         // v2.9 黑白：中性白灰，配地图 0 原版 / 5 极简黑白
+#define APPEAR_ELDEN 0                        // 艾尔登：暖金，配地图 1 罪恶都市
+#define APPEAR_MOSS  1                        // 苔林夜骑：低饱和绿，配地图 12 苔林
+// v2.9 第三包「默认」＝加主题包之前那套：圆屏首页仍是暖金，差别在 App 强调色和地图
+#define APPEAR_DEFAULT 2                      // 默认：系统蓝，配地图 0 原版 / 5 极简黑白
 #define APPEAR_N     3
 int appearIdx = APPEAR_ELDEN;                  // #TH,0/1/2；持久化在 NVS 键 appear
 String pendingAppearStatus;                    // 回给手机的 TH,<n>，手机用它校验切包是否落地
