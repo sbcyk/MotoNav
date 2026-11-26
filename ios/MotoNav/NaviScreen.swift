@@ -116,6 +116,16 @@ struct NaviScreen: View {
     private var topOverlay: some View {
         VStack(spacing: 10) {
             turnCard
+            if settings.showDebug {                     // v1.5 车道排查用，默认关
+                Text("车道回调 \(navi.laneEvents) 次 · \(navi.laneRaw)")
+                    .font(.caption2)
+                    .foregroundColor(AppTheme.hudSub)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(AppTheme.hudCard))
+            }
             if navi.uiSuggestMin > 0 {                  // iOS v0.2 高德发现更快的路线
                 HStack {
                     Text("发现更快路线，能省约 \(navi.uiSuggestMin) 分钟")

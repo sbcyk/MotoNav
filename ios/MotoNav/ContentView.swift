@@ -1051,6 +1051,9 @@ struct ContentView: View {
         }
     }
 
+    /// v1.5 当前主题包。包锁地图风格，风格选择器只在黑白包里出现。
+    private var currentPack: ThemePack { ThemePack(rawValue: settings.appearance) ?? .elden }
+
     /// 主题包：换包会连强调色和地图风格一起换，所以和外观一起放在通用设置里。
     /// 名字不能叫 appearanceCard——外观（浅色/深色）那张卡已经占了。
     private var themePackCard: some View {
@@ -1079,12 +1082,24 @@ struct ContentView: View {
             HStack {
                 Text("风格").foregroundColor(AppTheme.text)
                 Spacer()
-                Picker("风格", selection: $settings.theme) {
-                    ForEach(Settings.themeOrder, id: \.self) { t in Text(Settings.themeName(t)).tag(t) }
+                if currentPack.locksMapTheme {
+                    Text(Settings.themeName(currentPack.defaultMapTheme)).foregroundColor(AppTheme.sub)
+                } else {
+                    Picker("风格", selection: $settings.theme) {
+                        ForEach(currentPack.allowedThemes, id: \.self) { t in Text(Settings.themeName(t)).tag(t) }
+                    }
+                    .tint(AppTheme.accent)
                 }
-                .tint(AppTheme.accent)
             }
-            Text(Settings.themeDesc(settings.theme)).font(.footnote).foregroundColor(AppTheme.sub)
+            Text(currentPack.locksMapTheme
+                 ? "随「\(currentPack.name)」主题包锁定，要换地图请换包"
+                 : Settings.themeDesc(settings.theme))
+                .font(.footnote).foregroundColor(AppTheme.sub)
+            Toggle("显示调试信息", isOn: $settings.showDebug).foregroundColor(AppTheme.text).tint(AppTheme.accent)
+            if settings.showDebug {
+                Text("导航页会多一行：车道回调次数 + 高德原始车道串")
+                    .font(.caption).foregroundColor(AppTheme.sub)
+            }
         }
     }
 

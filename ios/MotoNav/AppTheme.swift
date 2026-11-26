@@ -432,11 +432,13 @@ struct ThemePalette {
 enum ThemePack: Int, CaseIterable {
     case elden = 0
     case moss = 1
+    case mono = 2
 
     var name: String {
         switch self {
         case .elden: return "艾尔登"
         case .moss:  return "苔林夜骑"
+        case .mono:  return "黑白"
         }
     }
 
@@ -444,6 +446,7 @@ enum ThemePack: Int, CaseIterable {
         switch self {
         case .elden: return "暖金 · 配罪恶都市地图"
         case .moss:  return "低饱和绿 · 配苔林地图"
+        case .mono:  return "中性灰白 · 原版 / 极简黑白地图"
         }
     }
 
@@ -452,8 +455,22 @@ enum ThemePack: Int, CaseIterable {
         switch self {
         case .elden: return 1
         case .moss:  return 12
+        case .mono:  return 0
         }
     }
+
+    /// v1.5 包里允许的地图风格。只有一项 = 锁死，界面上不给选；
+    /// 两项 = 在这个包内部二选一（黑白包只在「原版 / 极简黑白」之间）。
+    /// 这样不会出现「绿包配原版地图」这种混搭。
+    var allowedThemes: [Int] {
+        switch self {
+        case .elden: return [1]
+        case .moss:  return [12]
+        case .mono:  return [0, 5]
+        }
+    }
+
+    var locksMapTheme: Bool { allowedThemes.count == 1 }
 
     /// 强调色：浅色 / 深色。艾尔登的浅色必须压到 #8A5E1E，
     /// 亮金 #C08A2E 放在 #F3F3F8 底上只有 2.8:1，看不清。
@@ -461,6 +478,7 @@ enum ThemePack: Int, CaseIterable {
         switch self {
         case .elden: return (0x8A5E1E, 0xE0B25A)
         case .moss:  return (0x2F7D5A, 0x6FBF97)
+        case .mono:  return (0x3C3C3C, 0xD0D0D0)
         }
     }
 
@@ -485,6 +503,15 @@ enum ThemePack: Int, CaseIterable {
                 fill: 0xE4EBE6, fillDark: 0x22302A,
                 text: 0x17211B, textDark: 0xE9EFEA,
                 sub: 0x5B6B61, subDark: 0x8C9C92)
+        case .mono:
+            return ThemePalette(
+                bg: 0xF7F7F7, bgDark: 0x0A0A0A,
+                card: 0xFFFFFF, cardDark: 0x1A1A1A,
+                sunken: 0xF0F0F0, sunkenDark: 0x242424,
+                stroke: 0xD0D0D0, strokeDark: 0x333333,
+                fill: 0xE6E6E6, fillDark: 0x303030,
+                text: 0x0F0F0F, textDark: 0xF2F2F2,
+                sub: 0x6B6B6B, subDark: 0x9E9E9E)
         }
     }
 }

@@ -7,8 +7,8 @@ final class Settings: ObservableObject {
     static let shared = Settings()
     private let ud = UserDefaults.standard
 
-    /// 风格编号（和固件一样）；列表顺序
-    static let themeOrder = [1, 12, 0, 5, 11]
+    /// v1.5 圆屏地图风格对外只留三套：原版 0、极简黑白 5、苔林 12（苔林由「苔林夜骑」包独占）。
+    /// 其余 10 套配色固件里照旧保留、对照图也能导，只是不再出现在设置里 —— 见 ThemePack.allowedThemes。
     static func themeName(_ t: Int) -> String {
         switch t {
         case 11: return "龙珠雷达"
@@ -51,17 +51,24 @@ final class Settings: ObservableObject {
     }
 
     /// 主题包：一套包 = 首页画面 + App 强调色 + 默认地图配色。
-    /// 换包时把配套的地图风格一起改，否则会停在「苔林首页 + 粉紫地图」这种半套状态。
-    /// 重选同一个包不联动：用户在包里手改过地图风格，不该被一次重选悄悄覆盖回去。
+    /// v1.5 起包还锁定地图风格：黄包只有罪恶都市、绿包只有苔林、黑白包在原版/极简黑白里二选一，
+    /// 不再允许「绿包 + 粉紫地图」这种半套状态。
+    /// 重选同一个包不重复联动：用户在黑白包里选过极简黑白，不该被一次重选悄悄改回去。
     @Published var appearance: Int {
         didSet {
             ud.set(appearance, forKey: "appearance")
             BleLink.shared.send("#TH,\(appearance)")
             packStatus = "等待圆屏确认"
             guard appearance != oldValue else { return }
-            let want = ThemePack(rawValue: appearance)?.defaultMapTheme ?? 1
-            if theme != want { theme = want }
+            applyPackMapTheme()
         }
+    }
+
+    /// 把当前地图风格收进这个包允许的范围。换包和启动各走一次；
+    /// 界面上的选择器本来就只列 allowedThemes，用户手点不出混搭。
+    func applyPackMapTheme() {
+        guard let pack = ThemePack(rawValue: appearance) else { return }
+        if !pack.allowedThemes.contains(theme) { theme = pack.defaultMapTheme }
     }
 
     /// 圆屏回执：固件收到 #TH 后回 "TH,<n>"，用来确认切包真的落地
@@ -98,6 +105,9 @@ final class Settings: ObservableObject {
     @Published var trail: Int { didSet { ud.set(trail, forKey: "map_trail"); BleLink.shared.send("#r,\(trail)") } }
     /// 清爽模式：小地图保留，去掉红绿灯、电子眼、安全提示、测速牌和行程信息
     @Published var clean: Bool { didSet { ud.set(clean, forKey: "clean_mode"); BleLink.shared.send(clean ? "#w,1" : "#w,0") } }
+    /// v1.5 导航页显示一行调试信息（车道回调次数 + 高德原始车道串）。
+    /// 「圆屏从来没有车道提示」这类问题，靠它一次就能分清是 SDK 没回调还是串解析不出来。
+    @Published var showDebug: Bool { didSet { ud.set(showDebug, forKey: "show_debug") } }
     /// 圆屏方向（度，0~359，顺时针）。iOS v0.5 起 360° 可调：发 "#R,最接近的90°档,角度"，
     /// 固件 v7.10.1 起解析第二项精确角度；旧固件只认第一项，转到最接近的 90°
     @Published var rotationDeg: Int { didSet { ud.set(rotationDeg, forKey: "screen_rot_deg"); sendRotation() } }
@@ -185,8 +195,13 @@ final class Settings: ObservableObject {
 
     private init() {
         amapKey = ud.string(forKey: "key_amap") ?? ""
-        theme = Settings.themeOrder.contains(ud.integer(forKey: "map_theme")) && ud.object(forKey: "map_theme") != nil ? ud.integer(forKey: "map_theme") : 1
-        appearance = ThemePack(rawValue: ud.object(forKey: "appearance") as? Int ?? 0)?.rawValue ?? ThemePack.elden.rawValue
+        // v1.5 先定包再定地图风格：老数据里可能存在「绿包 + 原版地图」这种混搭，
+        // 这里按包允许的范围收一次，收不动就退回这个包的配套地图。
+        let savedPack = ThemePack(rawValue: ud.object(forKey: "appearance") as? Int ?? 0) ?? .elden
+        appearance = savedPack.rawValue
+        let savedTheme = ud.object(forKey: "map_theme") as? Int ?? savedPack.defaultMapTheme
+        theme = savedPack.allowedThemes.contains(savedTheme) ? savedTheme : savedPack.defaultMapTheme
+        showDebug = ud.bool(forKey: "show_debug")
         rotationDeg = ud.object(forKey: "screen_rot_deg") as? Int
             ?? ((ud.object(forKey: "screen_rot") as? Int ?? 0) & 3) * 90   // 老版本只存了 0~3 档
         brightness = ud.object(forKey: "bright") as? Double ?? 200

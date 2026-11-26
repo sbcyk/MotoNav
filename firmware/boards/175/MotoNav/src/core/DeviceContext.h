@@ -186,8 +186,9 @@ bool hidMediaReady();
 // 雷达、龙珠雷达那几套根本没有底图，它们只是风格，不是包。
 #define APPEAR_ELDEN 0                         // 艾尔登：暖金，配地图 1 罪恶都市
 #define APPEAR_MOSS  1                         // 苔林夜骑：低饱和绿，配地图 12 苔林
-#define APPEAR_N     2
-int appearIdx = APPEAR_ELDEN;                  // #TH,0/1；持久化在 NVS 键 appear
+#define APPEAR_MONO  2                         // v2.9 黑白：中性白灰，配地图 0 原版 / 5 极简黑白
+#define APPEAR_N     3
+int appearIdx = APPEAR_ELDEN;                  // #TH,0/1/2；持久化在 NVS 键 appear
 String pendingAppearStatus;                    // 回给手机的 TH,<n>，手机用它校验切包是否落地
 bool wxDirty = false;                 // v5.3 天气页要重画
 

@@ -224,7 +224,7 @@ void handleText(const String &m) {
     }
     return;
   }
-  if (m.startsWith("#TH,")) {                            // v2.5 主题包：0 艾尔登 / 1 苔林夜骑
+  if (m.startsWith("#TH,")) {                            // v2.5 主题包：0 艾尔登 / 1 苔林夜骑 / 2 黑白（v2.9）
     int a = m.substring(4).toInt();
     a = constrain(a, 0, APPEAR_N - 1);
     if (a != appearIdx) {

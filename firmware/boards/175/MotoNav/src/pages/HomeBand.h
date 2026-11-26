@@ -18,12 +18,25 @@
 // 用不同相对路径再引一次 HomeClock.h 会让编译器当成两个文件，直接报类重定义。
 
 // v2.6 配色按主题包取：艾尔登暖金 / 苔林冷绿。
+// v2.9 加第三套黑白：中性白灰，不偏金也不偏绿。
 // 写成函数而不是宏——appearIdx 运行时会变，宏在编译期就定死了。
-static inline uint16_t hbTxt()  { return appearIdx == APPEAR_MOSS ? 0xEF7D : 0xF6F5; }  // #EDF3EE / 暖白金
-static inline uint16_t hbSub()  { return appearIdx == APPEAR_MOSS ? 0x8D53 : 0xD5F1; }  // #8FA99A / 暗金
+static inline uint16_t hbTxt() {
+  if (appearIdx == APPEAR_MOSS) return 0xEF7D;   // #EDF3EE 苔林冷白
+  if (appearIdx == APPEAR_MONO) return 0xF79E;   // #F0F0F0 中性白
+  return 0xF6F5;                                 // 暖白金
+}
+static inline uint16_t hbSub() {
+  if (appearIdx == APPEAR_MOSS) return 0x8D53;   // #8FA99A 苔绿
+  if (appearIdx == APPEAR_MONO) return 0x9CF3;   // #9E9E9E 中性灰
+  return 0xD5F1;                                 // 暗金
+}
 // v2.7 苔林表圈从 #3E5C4A 提亮到 #B5BEB5：新底图整体比旧图亮一档，原来那条深绿压在草地和
 // 车身上只有 1.1:1，等于没画；现在 3.4:1，是一条看得见的细边，又不抢主景。
-static inline uint16_t hbRing() { return appearIdx == APPEAR_MOSS ? 0xB5F6 : 0xCD04; }  // #B5BEB5 / 金环
+static inline uint16_t hbRing() {
+  if (appearIdx == APPEAR_MOSS) return 0xB5F6;   // #B5BEB5 苔林细边
+  if (appearIdx == APPEAR_MONO) return 0xB5B6;   // #B0B4B0 中性灰边
+  return 0xCD04;                                 // 金环
+}
 #define HB_RING_R     224      // 环半径：星芒半高 7，r 必须 <= 225，否则 12/6 点尖端会画出屏
 #define HB_SPARK_R    7        // 星芒半高；fillTriangle 不裁剪，越界会写坏画布后面的内存
 

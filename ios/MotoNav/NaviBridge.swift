@@ -48,6 +48,8 @@ final class NaviBridge: NSObject, ObservableObject {
     @Published var preferredSimulationSpeed=60
     // 调试信息
     @Published var laneRaw = "（还没收到车道信息）"
+    /// v1.5 车道回调次数：一直是 0 就说明高德根本没回调，不是圆屏没画
+    @Published var laneEvents = 0
     @Published var camRaw = "（还没收到电子眼信息）"
     @Published var extraInfo = ""
     @Published var showArrived = false              // 刚到达目的地（手机和圆屏显示“已到达”4 秒）
@@ -468,6 +470,7 @@ final class NaviBridge: NSObject, ObservableObject {
         lastCamMsg = ""; lastCamAt = .distantPast; camLimit = 0; camMinDist = Int.max; lastCamMapMsg = ""
         camPts = []; cruiseCamPts = []; facPts = [:]; navFacPts = []; routeFacKey = ""; uiRemainM = 0; uiRemainS = 0
         lastLaneMsg = ""; lastTrafficMsg = ""; lastTrafficAt = .distantPast; gpsWeakSent = false
+        laneEvents = 0; laneRaw = "（还没收到车道信息）"      // v1.5 每次导航重新数
         suggestRoute = nil; uiSuggestMin = 0; suggestTimer?.invalidate()
         uiDir = ""; uiDist = -1; uiRoad = ""; extraInfo = ""
     }
@@ -745,6 +748,7 @@ final class NaviBridge: NSObject, ObservableObject {
 
     /// 高德的车道字符串（"1|0|0|4" 背景、"255|0|0|0" 推荐）→ "#j,1f00004…"（每条车道两个十六进制数）
     private func onLanes(back: String, select: String) {
+        laneEvents += 1
         let bg = back.split(separator: "|").map { Int($0.trimmingCharacters(in: .whitespaces)) ?? 255 }
         let fr = select.split(separator: "|").map { Int($0.trimmingCharacters(in: .whitespaces)) ?? 255 }
         var n = bg.firstIndex(of: 255) ?? bg.count
