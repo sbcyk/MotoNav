@@ -477,7 +477,7 @@ struct IndependentPlannerView:View {
                     guard let route=selectedRoute else {
                         showToast("先在下面路线列表里选一条，再点测车道",icon:"exclamationmark.triangle.fill");return
                     }
-                    if let err=NaviBridge.shared.verifySDKNav(to:route.request.end,vias:route.request.vias){
+                    if let err=NaviBridge.shared.verifySDKNav(to:route.request.end){
                         showToast(err,icon:"exclamationmark.triangle.fill")
                     }else{
                         showToast("正在用高德 SDK 算路…算完会自动跳进导航界面",icon:"arrow.triangle.turn.up.right.circle.fill")
