@@ -474,8 +474,18 @@ struct IndependentPlannerView:View {
                 // v1.5 临时验证（车道排查）：用高德 SDK 自己算路 + 模拟导航，看车道回调给不给数据。
                 // 验证完整段删掉，不影响下面的网页导航。
                 GlassButton(title:"测车道（高德 SDK 导航）",icon:"car.fill",style:.tinted){
-                    if let route=selectedRoute{
-                        if let err=NaviBridge.shared.verifySDKNav(to:route.request.end,vias:route.request.vias){model.message=err}
+                    guard let route=selectedRoute else {
+                        showToast("先在下面路线列表里选一条，再点测车道",icon:"exclamationmark.triangle.fill");return
+                    }
+                    if let err=NaviBridge.shared.verifySDKNav(to:route.request.end,vias:route.request.vias){
+                        showToast(err,icon:"exclamationmark.triangle.fill")
+                    }else{
+                        showToast("正在用高德 SDK 算路…算完会自动跳进导航界面",icon:"arrow.triangle.turn.up.right.circle.fill")
+                        // 15 秒还没进导航就把 NaviBridge 的失败原因说出来，别再静默
+                        DispatchQueue.main.asyncAfter(deadline:.now()+15){
+                            let n=NaviBridge.shared
+                            if !n.navigating { showToast("没进导航：\(n.info)",icon:"exclamationmark.triangle.fill") }
+                        }
                     }
                 }
             }
