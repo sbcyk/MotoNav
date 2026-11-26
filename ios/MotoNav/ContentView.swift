@@ -89,6 +89,9 @@ struct ContentView: View {
             Button("取消",role:.cancel){}
         } message: {Text("这台手机保留配对；其他手机以后要重新配对才能连上导航屏。")}
         .fullScreenCover(isPresented: $showNavi) { NaviScreen() }
+        .onChange(of: navi.sdkNavWanted) { want in            // v1.5 临时验证：算完路自动进高德导航界面
+            if want { showNavi = true; navi.sdkNavWanted = false }
+        }
         .sheet(isPresented:$showShareVerification){
             ShareVerificationView(page:AmapShare.findUrl(pendingShare).flatMap{URL(string:$0)}){
                 let text=pendingShare

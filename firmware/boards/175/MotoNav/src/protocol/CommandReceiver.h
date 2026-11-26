@@ -168,6 +168,12 @@ void handleText(const String &m) {
       for (int i = 0; i < n; i++) { laneBg[i] = hexVal(s[2 * i]); laneFr[i] = hexVal(s[2 * i + 1]); }
       laneN = n;
     }
+#if FPS_SERIAL_DIAGNOSTICS
+    // v2.9 排查「圆屏从来没有车道」：手机界面上看不出来时，靠这行判断 App 到底发没发。
+    // 只在这里打进固件的原始串，不去猜 App 侧解析——两侧一对比就能定位。
+    static String lastJ;
+    if (m != lastJ) { lastJ = m; Serial.printf("LANE RX %s lanes=%d\n", m.c_str(), laneN); }
+#endif
     navDirty = true;
     return;
   }

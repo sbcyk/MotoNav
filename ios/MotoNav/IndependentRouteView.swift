@@ -471,6 +471,13 @@ struct IndependentPlannerView:View {
                 GlassButton(title:"模拟导航",icon:"play.circle",style:.tinted){
                     if let route=selectedRoute{begin(route,true)}
                 }
+                // v1.5 临时验证（车道排查）：用高德 SDK 自己算路 + 模拟导航，看车道回调给不给数据。
+                // 验证完整段删掉，不影响下面的网页导航。
+                GlassButton(title:"测车道（高德 SDK 导航）",icon:"car.fill",style:.tinted){
+                    if let route=selectedRoute{
+                        if let err=NaviBridge.shared.verifySDKNav(to:route.request.end,vias:route.request.vias){model.message=err}
+                    }
+                }
             }
             .padding(.top,12)
         }label:{

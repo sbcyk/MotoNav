@@ -29,6 +29,9 @@ final class NaviBridge: NSObject, ObservableObject {
     @Published var calculating = false
     @Published var routeReady = false
     @Published var navigating = false
+    /// v1.5 临时验证（车道排查）：算完路直接请求打开高德导航界面。验证完可整段删除。
+    @Published var sdkNavWanted = false
+    private var verifyEmulate = false
     @Published var info = "（还没开始导航）"
     @Published var routeSummary = ""
     // 给界面看
@@ -363,6 +366,19 @@ final class NaviBridge: NSObject, ObservableObject {
                     : "⚠ 和分享的路线吻合 \(pct)%，约 \(NaviBridge.distText(r.bad)) 不一样（地图上橙色虚线是原路线）"
             }
         }
+    }
+
+    /// v1.5 临时验证入口（车道排查用）：用高德 SDK 自己算一条驾车路线，算完直接进模拟导航。
+    /// 只为了回答一个问题——SDK 到底会不会回调车道信息。验证完整段可以删除，不影响网页导航主流程。
+    func verifySDKNav(to dest: MotorPoint, vias wps: [MotorPoint] = []) -> String? {
+        guard !navigating, !cruising, !WebMotorSession.shared.running else { return "请先结束当前导航或巡航" }
+        guard MotorRequest.valid(dest.lat, dest.lng) else { return "目的地坐标无效" }
+        destLat = dest.lat
+        destLng = dest.lng
+        vias = wps.filter { MotorRequest.valid($0.lat, $0.lng) }.prefix(3).map { Via(name: $0.name, lat: $0.lat, lng: $0.lng) }
+        verifyEmulate = true
+        replan()
+        return nil
     }
 
     func start(emulate: Bool) {
@@ -1010,6 +1026,12 @@ extension NaviBridge {
         routeOptions = opts
         info = opts.count > 1 ? "规划好了 \(opts.count) 条路线，点卡片选一条" : "路线规划好了"
         if let f = opts.first { select(routeID: f.id) }
+        // v1.5 临时验证：算完直接进高德导航界面（模拟），只为确认车道回调是否下发
+        if verifyEmulate {
+            verifyEmulate = false
+            start(emulate: true)
+            if navigating { sdkNavWanted = true }
+        }
     }
 
     @objc(driveManager:onCalculateRouteFailure:)
